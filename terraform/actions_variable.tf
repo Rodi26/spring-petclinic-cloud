@@ -1,12 +1,3 @@
-variable "repository" {
-  description = "The GitHub repository name (e.g., 'owner/repo')"
-  type        = string
-  validation {
-    condition     = length(var.repository) > 0
-    error_message = "The 'repository' variable must be set to a valid GitHub repository name (e.g., 'owner/repo')."
-  }
-}
-
 resource "github_actions_variable" "repo-deploy-releases" {
   repository       = var.repository
   variable_name    = "MVN_DEV_REPO_DEPLOY_RELEASES"

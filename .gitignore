@@ -28,3 +28,4 @@ terraform/.terraform/providers/registry.terraform.io/jfrog/artifactory/12.8.1/da
 terraform/.terraform.lock.hcl
 spring-petclinic-visits-service/.factorypath
 .gitignore
+.github/workflows/maven-build.yml
