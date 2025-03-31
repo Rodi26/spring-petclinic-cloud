@@ -9,7 +9,7 @@ on:
     # The repository will be build once a day at 00:00 GMT.
     - cron: "0 0 * * *"
 permissions:
-  actions: read           # for detecting the Github Actions environment
+  actions: read           # for  detecting the Github Actions environment
   id-token: write         # for creating OIDC tokens for signing
   packages: write         # for uploading attestations
   contents: read          # read the contents permission
