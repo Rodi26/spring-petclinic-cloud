@@ -18,3 +18,13 @@ target/
 generated/
 .DS_Store
 .vscode/settings.json
+terraform/terraform.tfstate
+terraform/terraform.tfstate.backup
+terraform/terraform.tfvars
+terraform/.terraform/providers/registry.terraform.io/jfrog/project/1.9.3/darwin_arm64/terraform-provider-project_v1.9.3
+terraform/.terraform/providers/registry.terraform.io/jfrog/platform/2.2.1/darwin_arm64/terraform-provider-platform_v2.2.1
+terraform/.terraform/providers/registry.terraform.io/hashicorp/github/6.6.0/darwin_arm64/terraform-provider-github_v6.6.0
+terraform/.terraform/providers/registry.terraform.io/jfrog/artifactory/12.8.1/darwin_arm64/terraform-provider-artifactory_v12.8.1
+terraform/.terraform.lock.hcl
+spring-petclinic-visits-service/.factorypath
+.gitignore
