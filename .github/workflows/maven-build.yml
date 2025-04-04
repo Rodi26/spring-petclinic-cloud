@@ -60,3 +60,11 @@ jobs:
           jf docker push ${REPOSITORY_PREFIX}/spring-petclinic-cloud-admin-server:latest  --project "${{ vars.JFROG_PROJECT }}"
           jf docker push ${REPOSITORY_PREFIX}/spring-petclinic-cloud-discovery-service:latest  --project "${{ vars.JFROG_PROJECT }}"
           jf docker push ${REPOSITORY_PREFIX}/spring-petclinic-cloud-config-server:latest"  --project "${{ vars.JFROG_PROJECT }}"
+      - name: Publish to JFrog Artifactory
+        run: |
+          # Collect environment variables for the build
+          jf rt bce --project "${{ vars.JFROG_PROJECT }}" 
+          # Collect VCS details from git and add them to the build
+          jf rt bag --project "${{ vars.JFROG_PROJECT }}"
+          # Publish build info
+          jf rt bp --project "${{ vars.JFROG_PROJECT }}"
