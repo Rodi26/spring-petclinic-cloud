@@ -57,7 +57,8 @@ jobs:
         run: |
           jf docker build -t "${{ vars.DOCKER_DEV_REPO }}/${{ env.ArtifactName }}:${{ env.Version }}" --build-arg Artifact=./target/${{ env.ArtifactName }}-${{ env.Version }}.jar .  --project "${{ vars.JFROG_PROJECT }}"
       - name: Scan docker image locally with JFrog Xray
-        run: jf docker scan "${{ vars.DOCKER_DEV_REPO }}/${{ env.ArtifactName }}:${{ env.Version }}"
+        run: jf docker scan "${{ vars.DOCKER_DEV_REPO }}/${{ env.ArtifactName }}:${{ env.Version }}"  --project "${{ vars.JFROG_PROJECT }}"
+      - name: Publish to JFrog Artifactory
       - name: Push container image to JFrog Artifactory
         run: jf docker push "${{ vars.DOCKER_DEV_REPO }}/${{ env.ArtifactName }}:${{ env.Version }}"  --project "${{ vars.JFROG_PROJECT }}"
       - name: Publish to JFrog Artifactory

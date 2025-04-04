@@ -29,3 +29,4 @@ terraform/.terraform.lock.hcl
 spring-petclinic-visits-service/.factorypath
 .gitignore
 .github/workflows/maven-build.yml
+.github/workflows/build.yml

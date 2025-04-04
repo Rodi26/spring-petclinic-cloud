@@ -59,7 +59,7 @@ jobs:
           jf docker push ${REPOSITORY_PREFIX}/spring-petclinic-cloud-customers-service:latest  --project "${{ vars.JFROG_PROJECT }}"
           jf docker push ${REPOSITORY_PREFIX}/spring-petclinic-cloud-admin-server:latest  --project "${{ vars.JFROG_PROJECT }}"
           jf docker push ${REPOSITORY_PREFIX}/spring-petclinic-cloud-discovery-service:latest  --project "${{ vars.JFROG_PROJECT }}"
-          jf docker push ${REPOSITORY_PREFIX}/spring-petclinic-cloud-config-server:latest"  --project "${{ vars.JFROG_PROJECT }}"
+          jf docker push ${REPOSITORY_PREFIX}/spring-petclinic-cloud-config-server:latest  --project "${{ vars.JFROG_PROJECT }}"
       - name: Publish to JFrog Artifactory
         run: |
           # Collect environment variables for the build
