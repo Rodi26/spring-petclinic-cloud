@@ -46,12 +46,12 @@ jobs:
           jf mvnc --repo-deploy-releases=${{ vars.MVN_DEV_REPO_DEPLOY_RELEASES }} --repo-deploy-snapshots=${{ vars.MVN_DEV_REPO_DEPLOY_SNAPSHOTS }} --repo-resolve-releases=${{ vars.MVN_DEV_REPO_RESOLVE_RELEASES }} --repo-resolve-snapshots=${{ vars.MVN_DEV_REPO_RESOLVE_SNAPSHOTS }}
       - name: Build Maven 
         env:
-          REPOSITORY_PREFIX: "artifactory.rodolphef.org/dev.docker.local.fg"
+          REPOSITORY_PREFIX: "artifactory.rodolphef.org/dev-docker"
         run:  |
           jf mvn spring-boot:build-image -Pk8s -DREPOSITORY_PREFIX=$REPOSITORY_PREFIX --project "${{ vars.JFROG_PROJECT }}"
       - name: Push container image to JFrog Artifactory
         env:
-          REPOSITORY_PREFIX: "artifactory.rodolphef.org/dev.docker.local.fg"
+          REPOSITORY_PREFIX: "artifactory.rodolphef.org/dev-docker"
         run:  |
           jf docker push ${REPOSITORY_PREFIX}/spring-petclinic-cloud-api-gateway:latest  --project "${{ vars.JFROG_PROJECT }}"
           jf docker push ${REPOSITORY_PREFIX}/spring-petclinic-cloud-visits-service:latest  --project "${{ vars.JFROG_PROJECT }}"
