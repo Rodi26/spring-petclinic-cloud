@@ -48,7 +48,7 @@ jobs:
         env:
           REPOSITORY_PREFIX: "artifactory.rodolphef.org/dev-docker"
         run:  |
-          jf mvn spring-boot:build-image -Pk8s -DREPOSITORY_PREFIX=$REPOSITORY_PREFIX -DVERSION=${{ github.run_number }} --project "${{ vars.JFROG_PROJECT }}"
+          jf mvn -B -DskipTests=true spring-boot:build-image -Pk8s -DREPOSITORY_PREFIX=$REPOSITORY_PREFIX -DVERSION=${{ github.run_number }} --project "${{ vars.JFROG_PROJECT }}"
       - name: Scan docker image locally with JFrog Xray
         env:
           REPOSITORY_PREFIX: "artifactory.rodolphef.org/dev-docker"
