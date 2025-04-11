@@ -49,6 +49,16 @@ jobs:
           REPOSITORY_PREFIX: "artifactory.rodolphef.org/dev-docker"
         run:  |
           jf mvn spring-boot:build-image -Pk8s -DREPOSITORY_PREFIX=$REPOSITORY_PREFIX --project "${{ vars.JFROG_PROJECT }}"
+      - name: Scan docker image locally with JFrog Xray
+        run: | 
+          jf docker scan ${REPOSITORY_PREFIX}/spring-petclinic-cloud-api-gateway:latest 
+          jf docker scan ${REPOSITORY_PREFIX}/spring-petclinic-cloud-visits-service:latest 
+          jf docker scan ${REPOSITORY_PREFIX}/spring-petclinic-cloud-vets-service:latest 
+          jf docker scan ${REPOSITORY_PREFIX}/spring-petclinic-cloud-customers-service:latest 
+          jf docker scan ${REPOSITORY_PREFIX}/spring-petclinic-cloud-admin-server:latest 
+          jf docker scan ${REPOSITORY_PREFIX}/spring-petclinic-cloud-discovery-service:latest 
+          jf docker sacn ${REPOSITORY_PREFIX}/spring-petclinic-cloud-config-server:latest 
+
       - name: Push container image to JFrog Artifactory
         env:
           REPOSITORY_PREFIX: "artifactory.rodolphef.org/dev-docker"
