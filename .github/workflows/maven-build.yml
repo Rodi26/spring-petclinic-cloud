@@ -50,6 +50,8 @@ jobs:
         run:  |
           jf mvn spring-boot:build-image -Pk8s -DREPOSITORY_PREFIX=$REPOSITORY_PREFIX --project "${{ vars.JFROG_PROJECT }}"
       - name: Scan docker image locally with JFrog Xray
+        env:
+          REPOSITORY_PREFIX: "artifactory.rodolphef.org/dev-docker"
         run: | 
           jf docker scan ${REPOSITORY_PREFIX}/spring-petclinic-cloud-api-gateway:latest 
           jf docker scan ${REPOSITORY_PREFIX}/spring-petclinic-cloud-visits-service:latest 
