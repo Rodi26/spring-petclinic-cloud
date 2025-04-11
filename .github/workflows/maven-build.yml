@@ -59,7 +59,7 @@ jobs:
           jf docker scan ${REPOSITORY_PREFIX}/spring-petclinic-cloud-customers-service:latest 
           jf docker scan ${REPOSITORY_PREFIX}/spring-petclinic-cloud-admin-server:latest 
           jf docker scan ${REPOSITORY_PREFIX}/spring-petclinic-cloud-discovery-service:latest 
-          jf docker sacn ${REPOSITORY_PREFIX}/spring-petclinic-cloud-config-server:latest 
+          jf docker scan ${REPOSITORY_PREFIX}/spring-petclinic-cloud-config-server:latest 
 
       - name: Push container image to JFrog Artifactory
         env:
