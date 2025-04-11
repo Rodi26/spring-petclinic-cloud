@@ -6,6 +6,6 @@ then
 else 
     cat ./k8s/*.yaml | \
     sed 's#\${REPOSITORY_PREFIX}'"#${REPOSITORY_PREFIX}#g" | \
-    kubectl apply -f -
+    kubectl delete -f -
 fi
 

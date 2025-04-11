@@ -18,6 +18,8 @@ spec:
       labels:
         app: customers-service
     spec:
+      imagePullSecrets:
+        - name: regcred
       containers:
       - image: ${REPOSITORY_PREFIX}/spring-petclinic-cloud-customers-service:latest
         name: customers-service

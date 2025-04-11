@@ -17,6 +17,8 @@ spec:
       labels:
         app: api-gateway
     spec:
+      imagePullSecrets:
+        - name: regcred
       containers:
       - image: ${REPOSITORY_PREFIX}/spring-petclinic-cloud-api-gateway:latest
         name: api-gateway

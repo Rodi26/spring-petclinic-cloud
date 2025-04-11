@@ -17,6 +17,8 @@ spec:
       labels:
         app: visits-service
     spec:
+      imagePullSecrets:
+        - name: regcred
       containers:
       - image: ${REPOSITORY_PREFIX}/spring-petclinic-cloud-visits-service:latest
         name: visits-service
