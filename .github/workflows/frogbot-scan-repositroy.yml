@@ -48,4 +48,4 @@ jobs:
         # Insert to oidc-provider-name the 'Provider Name' defined in the OIDC integration configured in the JPD
         # with:
         #   oidc-provider-name: ""
-        JF_DEPS_REPO: ${{ vars.MVN_DEV_REPO_RESOLVE_RELEASES }}
+          JF_DEPS_REPO: ${{ vars.MVN_DEV_REPO_RESOLVE_RELEASES }}
