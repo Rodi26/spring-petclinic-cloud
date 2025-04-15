@@ -81,4 +81,4 @@ jobs:
           jf rt bp --project "${{ vars.JFROG_PROJECT }}"
       - name: Create Release Bundle for RLM
         run: |
-          jf rbc --builds=json/builds-spec.json --signing-key=${{ secrets.Key }} spring-petclinic-cloud ${{github.run_number}}
+          jf rbc --build-name Java_CI_with_Maven --build-number ${{github.run_number}} --signing-key=${{ secrets.Key }} spring-petclinic-cloud ${{github.run_number}}
