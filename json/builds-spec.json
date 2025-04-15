@@ -1,0 +1,7 @@
+{
+    "builds": [
+      {
+        "name": "Java_CI_with_Maven"
+      }
+    ]
+  }

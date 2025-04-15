@@ -79,3 +79,6 @@ jobs:
           jf rt bag --project "${{ vars.JFROG_PROJECT }}"
           # Publish build info
           jf rt bp --project "${{ vars.JFROG_PROJECT }}"
+      - name: Create Release Bundle for RLM
+        run: |
+          jf rbc --builds=json/builds-spec.json --signing-key=${{ secrets.Key }} spring-petclinic-cloud ${{github.run_number}}
