@@ -43,23 +43,23 @@ jobs:
           JF_ACCESS_TOKEN: ${{ secrets.JF_ACCESS_TOKEN }}
       - name : Config JFrog CLI
         run : |
-          jf mvnc --repo-deploy-releases=${{ vars.MVN_DEV_REPO_DEPLOY_RELEASES }} --repo-deploy-snapshots=${{ vars.MVN_DEV_REPO_DEPLOY_SNAPSHOTS }} --repo-resolve-releases=${{ vars.MVN_DEV_REPO_RESOLVE_RELEASES }} --repo-resolve-snapshots=${{ vars.MVN_DEV_REPO_RESOLVE_SNAPSHOTS }}
+          jf mvnc --repo-deploy-releases=${{ vars.MVN_DEV_REPO_DEPLOY_RELEASES }} --repo-deploy-snapshots=${{ vars.MVN_DEV_REPO_DEPLOY_SNAPSHOTS }} --repo-resolve-releases=${{ vars.MVN_DEV_REPO_RESOLVE_RELEASES }} --repo-resolve-snapshots=${{ vars.MVN_DEV_REPO_RESOLVE_SNAPSHOTS }} --project "${{ vars.JFROG_PROJECT }}"
       - name: Build Maven 
         env:
           REPOSITORY_PREFIX: "artifactory.rodolphef.org/dev-docker"
         run:  |
-          jf mvn -B -DskipTests=true spring-boot:build-image -Pk8s -DREPOSITORY_PREFIX=$REPOSITORY_PREFIX -DVERSION=${{ github.run_number }} 
-      - name: Scan docker image locally with JFrog Xray
-        env:
-          REPOSITORY_PREFIX: "artifactory.rodolphef.org/dev-docker"
-        run: | 
-          jf docker scan ${REPOSITORY_PREFIX}/spring-petclinic-cloud-api-gateway:${{ github.run_number }}
-          jf docker scan ${REPOSITORY_PREFIX}/spring-petclinic-cloud-visits-service:${{ github.run_number }}
-          jf docker scan ${REPOSITORY_PREFIX}/spring-petclinic-cloud-vets-service:${{ github.run_number }}
-          jf docker scan ${REPOSITORY_PREFIX}/spring-petclinic-cloud-customers-service:${{ github.run_number }}
-          jf docker scan ${REPOSITORY_PREFIX}/spring-petclinic-cloud-admin-server:${{ github.run_number }}
-          jf docker scan ${REPOSITORY_PREFIX}/spring-petclinic-cloud-discovery-service:${{ github.run_number }}
-          jf docker scan ${REPOSITORY_PREFIX}/spring-petclinic-cloud-config-server:${{ github.run_number }}
+          jf mvn -B -DskipTests=true spring-boot:build-image -Pk8s -DREPOSITORY_PREFIX=$REPOSITORY_PREFIX -DVERSION=${{ github.run_number }}  --project "${{ vars.JFROG_PROJECT }}"
+      # - name: Scan docker image locally with JFrog Xray
+      #   env:
+      #     REPOSITORY_PREFIX: "artifactory.rodolphef.org/dev-docker"
+      #   run: | 
+      #     jf docker scan ${REPOSITORY_PREFIX}/spring-petclinic-cloud-api-gateway:${{ github.run_number }}
+      #     jf docker scan ${REPOSITORY_PREFIX}/spring-petclinic-cloud-visits-service:${{ github.run_number }}
+      #     jf docker scan ${REPOSITORY_PREFIX}/spring-petclinic-cloud-vets-service:${{ github.run_number }}
+      #     jf docker scan ${REPOSITORY_PREFIX}/spring-petclinic-cloud-customers-service:${{ github.run_number }} 
+      #     jf docker scan ${REPOSITORY_PREFIX}/spring-petclinic-cloud-admin-server:${{ github.run_number }} 
+      #     jf docker scan ${REPOSITORY_PREFIX}/spring-petclinic-cloud-discovery-service:${{ github.run_number }} 
+      #     jf docker scan ${REPOSITORY_PREFIX}/spring-petclinic-cloud-config-server:${{ github.run_number }}
       - name: Push container image to JFrog Artifactory
         env:
           REPOSITORY_PREFIX: "artifactory.rodolphef.org/dev-docker"
@@ -80,7 +80,7 @@ jobs:
           # Publish build info
           jf rt bp --project "${{ vars.JFROG_PROJECT }}"
           # Scan the published build-info with Xray
-          jf rt bs Java_CI_with_Maven ${{github.run_number}}
+          jf rt bs Java_CI_with_Maven ${{github.run_number}} --project "${{ vars.JFROG_PROJECT }}"
       - name: Create Release Bundle for RLM
         run: |
-          jf rbc --build-name Java_CI_with_Maven --build-number ${{github.run_number}} --signing-key=${{ secrets.Key }} spring-petclinic-cloud ${{github.run_number}} 
+          jf rbc --build-name Java_CI_with_Maven --build-number ${{github.run_number}} --signing-key=${{ secrets.Key }} spring-petclinic-cloud ${{github.run_number}}  --project "${{ vars.JFROG_PROJECT }}"
