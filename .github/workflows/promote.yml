@@ -43,4 +43,4 @@ jobs:
           JF_ACCESS_TOKEN: ${{ secrets.JF_ACCESS_TOKEN }}
       - name: Create Release Bundle for RLM
         run: |
-         jf rbc --build-name Java_CI_with_Maven --build-number ${{github.run_number}} --signing-key=${{ secrets.Key }} spring-petclinic-cloud ${{github.run_number}} --project demo-1
+         jf rbc --signing-key=${{ secrets.Key }} spring-petclinic-cloud ${{github.run_number}} --project demo-1
