@@ -49,6 +49,7 @@ jobs:
           REPOSITORY_PREFIX: "artifactory.rodolphef.org/dev-docker"
         run:  |
           jf mvn -B -DskipTests=true spring-boot:build-image -Pk8s -DREPOSITORY_PREFIX=$REPOSITORY_PREFIX -DVERSION=${{ github.run_number }} 
+      - name: Scan docker image locally with JFrog Xray
         env:
           REPOSITORY_PREFIX: "artifactory.rodolphef.org/dev-docker"
         run: | 
@@ -82,4 +83,4 @@ jobs:
           jf rt bs ${{env.BUILD_NAME}} ${{github.run_number}}
       - name: Create Release Bundle for RLM
         run: |
-          jf rbc --build-name Java_CI_with_Maven --build-number ${{github.run_number}} --signing-key=${{ secrets.Key }} spring-petclinic ${{github.run_number}} 
+          jf rbc --build-name Java_CI_with_Maven --build-number ${{github.run_number}} --signing-key=${{ secrets.Key }} spring-petclinic-cloud ${{github.run_number}} 
