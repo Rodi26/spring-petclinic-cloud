@@ -80,7 +80,7 @@ jobs:
           # Publish build info
           jf rt bp --project "${{ vars.JFROG_PROJECT }}"
           # Scan the published build-info with Xray
-          jf rt bs ${{env.BUILD_NAME}} ${{github.run_number}}
+          jf rt bs Java_CI_with_Maven ${{github.run_number}}
       - name: Create Release Bundle for RLM
         run: |
           jf rbc --build-name Java_CI_with_Maven --build-number ${{github.run_number}} --signing-key=${{ secrets.Key }} spring-petclinic-cloud ${{github.run_number}} 
