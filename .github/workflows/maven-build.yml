@@ -55,7 +55,7 @@ jobs:
         run: | 
           jf docker scan ${REPOSITORY_PREFIX}/spring-petclinic-cloud-api-gateway:${{ github.run_number }}
           jf docker scan ${REPOSITORY_PREFIX}/spring-petclinic-cloud-visits-service:${{ github.run_number }}
-          jf docker scan ${REPOSITORY_PREFIX}/spring-petclinic-cloud-vets-service:${{ github.run_number }}local
+          jf docker scan ${REPOSITORY_PREFIX}/spring-petclinic-cloud-vets-service:${{ github.run_number }}
           jf docker scan ${REPOSITORY_PREFIX}/spring-petclinic-cloud-customers-service:${{ github.run_number }}
           jf docker scan ${REPOSITORY_PREFIX}/spring-petclinic-cloud-admin-server:${{ github.run_number }}
           jf docker scan ${REPOSITORY_PREFIX}/spring-petclinic-cloud-discovery-service:${{ github.run_number }}

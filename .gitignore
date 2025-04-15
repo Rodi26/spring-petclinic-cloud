@@ -30,3 +30,5 @@ spring-petclinic-visits-service/.factorypath
 .gitignore
 .github/workflows/maven-build.yml
 .github/workflows/build.yml
+private.pem
+public.pem
