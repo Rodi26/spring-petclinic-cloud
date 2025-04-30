@@ -58,37 +58,39 @@ jobs:
         env:
           REPOSITORY_PREFIX: "artifactory.rodolphef.org/dev-oci"
         run: | 
-            jf docker scan --fail=false --threads=5 ${REPOSITORY_PREFIX}/spring-petclinic-cloud-api-gateway:${{ github.run_number }} --vuln --format=sarif > ./jfrog_docker_scan_cloud-api-gateway.sarif
+            jf docker scan --fail=false --threads=5 ${REPOSITORY_PREFIX}/spring-petclinic-cloud-api-gateway:${{ github.run_number }} --vuln --format=sarif > jfrog_docker_scan_cloud-api-gateway.sarif
             sed -i "s|\"uri\": \"\"|\"uri\": \"${REPOSITORY_PREFIX}/spring-petclinic-cloud-api-gateway:${{ github.run_number }}\"|g" jfrog_docker_scan_cloud-api-gateway.sarif
+            ls -al ./jfrog_docker_scan_cloud-api-gateway.sarif
+            pwd
         
-            jf docker scan --fail=false --threads=5 ${REPOSITORY_PREFIX}/spring-petclinic-cloud-visits-service:${{ github.run_number }} --vuln --format=sarif > ./jfrog_docker_scan_cloud-visits-service.sarif
+            jf docker scan --fail=false --threads=5 ${REPOSITORY_PREFIX}/spring-petclinic-cloud-visits-service:${{ github.run_number }} --vuln --format=sarif > jfrog_docker_scan_cloud-visits-service.sarif
             sed -i "s|\"uri\": \"\"|\"uri\": \"${REPOSITORY_PREFIX}/spring-petclinic-cloud-visits-service:${{ github.run_number }}\"|g" jfrog_docker_scan_cloud-visits-service.sarif
         
-            jf docker scan --fail=false --threads=5 ${REPOSITORY_PREFIX}/spring-petclinic-cloud-vets-service:${{ github.run_number }} --vuln --format=sarif > ./jfrog_docker_scan_cloud-vets-service.sarif
+            jf docker scan --fail=false --threads=5 ${REPOSITORY_PREFIX}/spring-petclinic-cloud-vets-service:${{ github.run_number }} --vuln --format=sarif > jfrog_docker_scan_cloud-vets-service.sarif
             sed -i "s|\"uri\": \"\"|\"uri\": \"${REPOSITORY_PREFIX}/spring-petclinic-cloud-vets-service:${{ github.run_number }}\"|g" jfrog_docker_scan_cloud-vets-service.sarif
         
-            jf docker scan --fail=false --threads=5 ${REPOSITORY_PREFIX}/spring-petclinic-cloud-customers-service:${{ github.run_number }} --vuln --format=sarif > ./jfrog_docker_scan_cloud-customers-service.sarif
+            jf docker scan --fail=false --threads=5 ${REPOSITORY_PREFIX}/spring-petclinic-cloud-customers-service:${{ github.run_number }} --vuln --format=sarif > jfrog_docker_scan_cloud-customers-service.sarif
             sed -i "s|\"uri\": \"\"|\"uri\": \"${REPOSITORY_PREFIX}/spring-petclinic-cloud-customers-service:${{ github.run_number }}\"|g" jfrog_docker_scan_cloud-customers-service.sarif
         
-            jf docker scan --fail=false --threads=5 ${REPOSITORY_PREFIX}/spring-petclinic-cloud-admin-server:${{ github.run_number }} --vuln --format=sarif > ./jfrog_docker_scan_cloud-admin-server.sarif
+            jf docker scan --fail=false --threads=5 ${REPOSITORY_PREFIX}/spring-petclinic-cloud-admin-server:${{ github.run_number }} --vuln --format=sarif > jfrog_docker_scan_cloud-admin-server.sarif
             sed -i "s|\"uri\": \"\"|\"uri\": \"${REPOSITORY_PREFIX}/spring-petclinic-cloud-admin-server:${{ github.run_number }}\"|g" jfrog_docker_scan_cloud-admin-server.sarif
         
-            jf docker scan --fail=false --threads=5 ${REPOSITORY_PREFIX}/spring-petclinic-cloud-discovery-service:${{ github.run_number }} --vuln --format=sarif > ./jfrog_docker_scan_cloud-discovery-service.sarif
+            jf docker scan --fail=false --threads=5 ${REPOSITORY_PREFIX}/spring-petclinic-cloud-discovery-service:${{ github.run_number }} --vuln --format=sarif > jfrog_docker_scan_cloud-discovery-service.sarif
             sed -i "s|\"uri\": \"\"|\"uri\": \"${REPOSITORY_PREFIX}/spring-petclinic-cloud-discovery-service:${{ github.run_number }}\"|g" jfrog_docker_scan_cloud-discovery-service.sarif
         
-            jf docker scan --fail=false --threads=5 ${REPOSITORY_PREFIX}/spring-petclinic-cloud-config-server:${{ github.run_number }} --vuln --format=sarif > ./jfrog_docker_scan_cloud-config-server.sarif
+            jf docker scan --fail=false --threads=5 ${REPOSITORY_PREFIX}/spring-petclinic-cloud-config-server:${{ github.run_number }} --vuln --format=sarif > jfrog_docker_scan_cloud-config-server.sarif
             sed -i "s|\"uri\": \"\"|\"uri\": \"${REPOSITORY_PREFIX}/spring-petclinic-cloud-config-server:${{ github.run_number }}\"|g" jfrog_docker_scan_cloud-config-server.sarif
       - name: Upload output to generate autofix
         uses: github/codeql-action/upload-sarif@v3
         with: 
           sarif_file: |
-            ./jfrog_docker_scan_cloud-api-gateway.sarif
-            ./jfrog_docker_scan_cloud-visits-service.sarif
-            ./jfrog_docker_scan_cloud-vets-service.sarif
-            ./jfrog_docker_scan_cloud-customers-service.sarif
-            ./jfrog_docker_scan_cloud-admin-server.sarif
-            ./jfrog_docker_scan_cloud-discovery-service.sarif
-            ./jfrog_docker_scan_cloud-config-server.sarif
+            jfrog_docker_scan_cloud-api-gateway.sarif
+            jfrog_docker_scan_cloud-visits-service.sarif
+            jfrog_docker_scan_cloud-vets-service.sarif
+            jfrog_docker_scan_cloud-customers-service.sarif
+            jfrog_docker_scan_cloud-admin-server.sarif
+            jfrog_docker_scan_cloud-discovery-service.sarif
+            jfrog_docker_scan_cloud-config-server.sarif
       - name: Push container image to JFrog Artifactory
         env:
           REPOSITORY_PREFIX: "artifactory.rodolphef.org/dev-oci"
