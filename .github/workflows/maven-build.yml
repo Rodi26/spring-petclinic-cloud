@@ -23,6 +23,11 @@ jobs:
     strategy:
       matrix:
         java: [ '11' ]
+    env:
+      REPOSITORY_PREFIX: "artifactory.rodolphef.org/dev-oci"
+    outputs:
+      image:  ${{ vars.JF_HOST }}/${{ env.DOCKER_REPO }}/${{ env.IMAGE_NAME }}
+      digest: ${{ steps.build.outputs.digest }}
     steps:
       - name: checkout Git repository
         uses: actions/checkout@v4
@@ -46,23 +51,41 @@ jobs:
           jf mvnc --repo-deploy-releases=${{ vars.MVN_DEV_REPO_DEPLOY_RELEASES }} --repo-deploy-snapshots=${{ vars.MVN_DEV_REPO_DEPLOY_SNAPSHOTS }} --repo-resolve-releases=${{ vars.MVN_DEV_REPO_RESOLVE_RELEASES }} --repo-resolve-snapshots=${{ vars.MVN_DEV_REPO_RESOLVE_SNAPSHOTS }} 
       - name: Build Maven 
         env:
-          REPOSITORY_PREFIX: "artifactory.rodolphef.org/dev-docker"
+          REPOSITORY_PREFIX: "artifactory.rodolphef.org/dev-oci"
         run:  |
           jf mvn -B -DskipTests=true spring-boot:build-image -Pk8s -DREPOSITORY_PREFIX=$REPOSITORY_PREFIX -DVERSION=${{ github.run_number }}  --project "${{ vars.JFROG_PROJECT }}"
-      # - name: Scan docker image locally with JFrog Xray
-      #   env:
-      #     REPOSITORY_PREFIX: "artifactory.rodolphef.org/dev-docker"
-      #   run: | 
-      #     jf docker scan ${REPOSITORY_PREFIX}/spring-petclinic-cloud-api-gateway:${{ github.run_number }}
-      #     jf docker scan ${REPOSITORY_PREFIX}/spring-petclinic-cloud-visits-service:${{ github.run_number }}
-      #     jf docker scan ${REPOSITORY_PREFIX}/spring-petclinic-cloud-vets-service:${{ github.run_number }}
-      #     jf docker scan ${REPOSITORY_PREFIX}/spring-petclinic-cloud-customers-service:${{ github.run_number }} 
-      #     jf docker scan ${REPOSITORY_PREFIX}/spring-petclinic-cloud-admin-server:${{ github.run_number }} 
-      #     jf docker scan ${REPOSITORY_PREFIX}/spring-petclinic-cloud-discovery-service:${{ github.run_number }} 
-      #     jf docker scan ${REPOSITORY_PREFIX}/spring-petclinic-cloud-config-server:${{ github.run_number }}
+      - name: Scan docker image locally with JFrog Xray
+        env:
+          REPOSITORY_PREFIX: "artifactory.rodolphef.org/dev-oci"
+        run: | 
+          jf docker scan --fail=false  --threads=5 ${REPOSITORY_PREFIX}/spring-petclinic-cloud-api-gateway:${{ github.run_number }} --vuln --format=sarif > jfrog_docker_scan_cloud-api-gateway.sarif
+          sed -i s/"\"uri\": \"\""/"\"uri\": \"${REPOSITORY_PREFIX}/spring-petclinic-cloud-api-gateway:${{ github.run_number }}\""/g jfrog_docker_scan_cloud-api-gateway.sarif
+          jf docker scan --fail=false  --threads=5 ${REPOSITORY_PREFIX}/spring-petclinic-cloud-visits-service:${{ github.run_number }} --vuln --format=sarif > jfrog_docker_scan_cloud-visits-service.sarif
+          sed -i s/"\"uri\": \"\""/"\"uri\": \"${REPOSITORY_PREFIX}/spring-petclinic-cloud-visits-service:${{ github.run_number }}\""/g jfrog_docker_scan_cloud-visits-service.sarif
+          jf docker scan --fail=false  --threads=5 ${REPOSITORY_PREFIX}/spring-petclinic-cloud-vets-service:${{ github.run_number }} --vuln --format=sarif > jfrog_docker_scan_cloud-vets-service.sarif
+          sed -i s/"\"uri\": \"\""/"\"uri\": \"${REPOSITORY_PREFIX}/spring-petclinic-cloud-vets-service:${{ github.run_number }}\""/g jfrog_docker_scan_cloud-vets-service.sarif
+          jf docker scan --fail=false  --threads=5 ${REPOSITORY_PREFIX}/spring-petclinic-cloud-customers-service:${{ github.run_number }} --vuln --format=sarif > jfrog_docker_scan_cloud-customers-service.sarif
+          sed -i s/"\"uri\": \"\""/"\"uri\": \"${REPOSITORY_PREFIX}/spring-petclinic-cloud-customers-service:${{ github.run_number }}\""/g jfrog_docker_scan_cloud-customers-service.sarif
+          jf docker scan --fail=false  --threads=5 ${REPOSITORY_PREFIX}/spring-petclinic-cloud-admin-server:${{ github.run_number }} --vuln --format=sarif > jfrog_docker_scan_cloud-admin-server.sarif
+          sed -i s/"\"uri\": \"\""/"\"uri\": \"${REPOSITORY_PREFIX}/spring-petclinic-cloud-admin-server:${{ github.run_number }}\""/g jfrog_docker_scan_cloud-admin-server.sarif
+          jf docker scan --fail=false  --threads=5 ${REPOSITORY_PREFIX}/spring-petclinic-cloud-discovery-service:${{ github.run_number }} --vuln --format=sarif > jfrog_docker_scan_cloud-discovery-service.sarif
+          sed -i s/"\"uri\": \"\""/"\"uri\": \"${REPOSITORY_PREFIX}/spring-petclinic-cloud-discovery-service:${{ github.run_number }}\""/g jfrog_docker_scan_cloud-discovery-service.sarif
+          jf docker scan --fail=false  --threads=5 ${REPOSITORY_PREFIX}/spring-petclinic-cloud-config-server:${{ github.run_number }} --vuln --format=sarif > jfrog_docker_scan_cloud-config-server.sarif
+          sed -i s/"\"uri\": \"\""/"\"uri\": \"${REPOSITORY_PREFIX}/spring-petclinic-cloud-config-server:${{ github.run_number }}\""/g jfrog_docker_scan_cloud-config-server.sarif
+      - name: Upload output to generate autofix
+        uses: github/codeql-action/upload-sarif@v3
+        with: 
+          sarif_file: |
+            jfrog_docker_scan_cloud-api-gateway.sarif
+            jfrog_docker_scan_cloud-visits-service.sarif
+            jfrog_docker_scan_cloud-vets-service.sarif
+            jfrog_docker_scan_cloud-customers-service.sarif
+            jfrog_docker_scan_cloud-admin-server.sarif
+            jfrog_docker_scan_cloud-discovery-service.sarif
+            jfrog_docker_scan_cloud-config-server.sarif
       - name: Push container image to JFrog Artifactory
         env:
-          REPOSITORY_PREFIX: "artifactory.rodolphef.org/dev-docker"
+          REPOSITORY_PREFIX: "artifactory.rodolphef.org/dev-oci"
         run:  |
           jf docker push ${REPOSITORY_PREFIX}/spring-petclinic-cloud-api-gateway:${{ github.run_number }}  --project "${{ vars.JFROG_PROJECT }}"
           jf docker push ${REPOSITORY_PREFIX}/spring-petclinic-cloud-visits-service:${{ github.run_number }}  --project "${{ vars.JFROG_PROJECT }}"
@@ -81,6 +104,26 @@ jobs:
           jf rt bp --project "${{ vars.JFROG_PROJECT }}"
           # Scan the published build-info with Xray
           jf rt bs Java_CI_with_Maven ${{github.run_number}} --project "${{ vars.JFROG_PROJECT }}"
+      - name: Create test evidence
+        id: create-evd  
+        run: |
+          jf evd create --predicate=api_test_run.json --predicate-type=https://jfrog.com/evidence/test-results/v1 \
+          --package-name spring-clinic --package-version ${{ github.run_number }} --package-repo-name dev-oci \
+          --key private.pem --key-alias Evidence --markdown test-results.md --project=${{ vars.JFROG_PROJECT }}
       - name: Create Release Bundle for RLM
         run: |
-          jf rbc --build-name Java_CI_with_Maven --build-number ${{github.run_number}} --signing-key=${{ secrets.KEY_ALIAS }} spring-petclinic-cloud ${{github.run_number}}  --project "${{ vars.JFROG_PROJECT }}"
+          jf rbc --build-name Java_CI_with_Maven --build-number ${{github.run_number}} --signing-key=${{ secrets.KEY_ALIAS }} spring-petclinic-cloud ${{github.run_number}}  --sync=true --project "${{ vars.JFROG_PROJECT }}"
+          jf evd create --predicate ./feature.json --predicate-type=https://jfrog.com/evidence/test-results/v1 \
+          --release-bundle spring-petclinic-cloud  --release-bundle-version 1.${{ github.run_number }}.0 \
+          --key private.pem  --key-alias Evidence  --project=${{ vars.JF_PROJECT }} --markdown feature-flags.md
+  # provenance:
+  #   needs: [build]
+  #   uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v2.0.0
+  #   with:
+  #     image:  ${{ needs.build.outputs.image }}
+  #     digest: ${{ needs.build.outputs.digest }}
+  #     private-repository: true          
+  #   secrets:
+  #     registry-username: rodolphef@jfrog.com
+  #     registry-password: ${{ secrets.JF_ACCESS_TOKEN }}
+            
