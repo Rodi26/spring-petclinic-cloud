@@ -82,13 +82,13 @@ jobs:
         uses: github/codeql-action/upload-sarif@v3
         with: 
           sarif_file: |
-            jfrog_docker_scan_cloud-api-gateway.sarif
-            jfrog_docker_scan_cloud-visits-service.sarif
-            jfrog_docker_scan_cloud-vets-service.sarif
-            jfrog_docker_scan_cloud-customers-service.sarif
-            jfrog_docker_scan_cloud-admin-server.sarif
-            jfrog_docker_scan_cloud-discovery-service.sarif
-            jfrog_docker_scan_cloud-config-server.sarif
+            ./jfrog_docker_scan_cloud-api-gateway.sarif
+            ./jfrog_docker_scan_cloud-visits-service.sarif
+            ./jfrog_docker_scan_cloud-vets-service.sarif
+            ./jfrog_docker_scan_cloud-customers-service.sarif
+            ./jfrog_docker_scan_cloud-admin-server.sarif
+            ./jfrog_docker_scan_cloud-discovery-service.sarif
+            ./jfrog_docker_scan_cloud-config-server.sarif
       - name: Push container image to JFrog Artifactory
         env:
           REPOSITORY_PREFIX: "artifactory.rodolphef.org/dev-oci"
