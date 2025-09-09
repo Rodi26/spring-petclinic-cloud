@@ -145,8 +145,7 @@ jobs:
           REPOSITORY_PREFIX: "artifactory.rodolphef.org/dev-oci"
         run:  |
           for service in spring-petclinic-cloud-api-gateway spring-petclinic-cloud-visits-service spring-petclinic-cloud-vets-service spring-petclinic-cloud-customers-service spring-petclinic-cloud-admin-server spring-petclinic-cloud-discovery-service spring-petclinic-cloud-config-server; do
-            docker tag ${service}:latest ${REPOSITORY_PREFIX}/${service}:${{ github.run_number }}
-            jf docker push ${REPOSITORY_PREFIX}/${service}:${{ github.run_number }} --project "${{ vars.JFROG_PROJECT }}"
+            jf docker push ${REPOSITORY_PREFIX}/${service}:2.6.3-build-${{ github.run_number }} --project "${{ vars.JFROG_PROJECT }}"
           done
       - name: Publish to JFrog Artifactory
         run: |
