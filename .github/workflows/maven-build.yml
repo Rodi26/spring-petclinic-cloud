@@ -61,7 +61,7 @@ jobs:
               xargs -I {} jf rt delete "{}" --quiet
           fi
         
-    - name: Align Project Versioning
+      - name: Align Project Versioning
         run: |
           PROJECT_VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout | sed 's/-SNAPSHOT//')
           UNIFIED_VERSION="${PROJECT_VERSION}.${GITHUB_RUN_NUMBER}"
@@ -149,15 +149,15 @@ jobs:
           --release-bundle spring-petclinic-cloud  --release-bundle-version 1.${{ github.run_number }}.0 \
           --key private.pem  --key-alias Evidence  --project=${{ vars.JFROG_PROJECT }} --markdown feature-flags.md
   provenance:
-  needs: [build]
-  uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v2.0.0
-  with:
-    image: ${{ needs.build.outputs.image }}
-    digest: ${{ needs.build.outputs.digest }}
-    private-repository: true
-  secrets:
-    registry-username: ${{ secrets.REGISTRY_USERNAME }}
-    registry-password: ${{ secrets.JF_ACCESS_TOKEN }}
+    needs: [build]
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v2.0.0
+    with:
+      image: ${{ needs.build.outputs.image }}
+      digest: ${{ needs.build.outputs.digest }}
+      private-repository: true
+    secrets:
+      registry-username: ${{ secrets.REGISTRY_USERNAME }}
+      registry-password: ${{ secrets.JF_ACCESS_TOKEN }}
   # provenance:
   #   needs: [build]
   #   uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v2.0.0
