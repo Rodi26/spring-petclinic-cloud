@@ -161,11 +161,11 @@ jobs:
         id: create-evd  
         run: |
           jf evd create --predicate=api_test_run.json --predicate-type=https://jfrog.com/evidence/test-results/v1 \
-          --package-name spring-clinic --package-version ${{ github.run_number }} --package-repo-name dev-oci \
+          --package-name spring-clinic --package-version 2.6.3-build-${{ github.run_number }} --package-repo-name dev-oci \
           --key private.pem --key-alias Evidence --markdown test-results.md --project=${{ vars.JFROG_PROJECT }}
       - name: Create Release Bundle for RLM
         run: |
-          jf rbc --build-name Java_CI_with_Maven --build-number ${{github.run_number}} --signing-key=${{ secrets.KEY_ALIAS }} spring-petclinic-cloud ${{github.run_number}}  --sync=true --project "${{ vars.JFROG_PROJECT }}"
+          jf rbc --build-name Java_CI_with_Maven --build-number ${{github.run_number}} --signing-key=${{ secrets.KEY_ALIAS }} spring-petclinic-cloud 2.6.3-build-${{github.run_number}}  --sync=true --project "${{ vars.JFROG_PROJECT }}"
           jf evd create --predicate ./feature.json --predicate-type=https://jfrog.com/evidence/test-results/v1 \
           --release-bundle spring-petclinic-cloud  --release-bundle-version 1.${{ github.run_number }}.0 \
           --key private.pem  --key-alias Evidence  --project=${{ vars.JFROG_PROJECT }} --markdown feature-flags.md
