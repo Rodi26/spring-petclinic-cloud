@@ -161,7 +161,7 @@ jobs:
         id: create-evd  
         run: |
           jf evd create --predicate=api_test_run.json --predicate-type=https://jfrog.com/evidence/test-results/v1 \
-          --package-name spring-clinic --package-version 2.6.3-build-${{ github.run_number }} --package-repo-name dev-oci \
+          --package-name spring-clinic-cloud --package-version 2.6.3-build-${{ github.run_number }} --package-repo-name dev-oci \
           --key private.pem --key-alias Evidence --markdown test-results.md --project=${{ vars.JFROG_PROJECT }}
       - name: Create Release Bundle for RLM
         run: |
