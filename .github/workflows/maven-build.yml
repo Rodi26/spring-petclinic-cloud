@@ -144,13 +144,10 @@ jobs:
         env:
           REPOSITORY_PREFIX: "artifactory.rodolphef.org/dev-oci"
         run:  |
-          jf docker push ${REPOSITORY_PREFIX}/spring-petclinic-cloud-api-gateway:${{ github.run_number }}  --project "${{ vars.JFROG_PROJECT }}"
-          jf docker push ${REPOSITORY_PREFIX}/spring-petclinic-cloud-visits-service:${{ github.run_number }}  --project "${{ vars.JFROG_PROJECT }}"
-          jf docker push ${REPOSITORY_PREFIX}/spring-petclinic-cloud-vets-service:${{ github.run_number }}  --project "${{ vars.JFROG_PROJECT }}"
-          jf docker push ${REPOSITORY_PREFIX}/spring-petclinic-cloud-customers-service:${{ github.run_number }}  --project "${{ vars.JFROG_PROJECT }}"
-          jf docker push ${REPOSITORY_PREFIX}/spring-petclinic-cloud-admin-server:${{ github.run_number }}  --project "${{ vars.JFROG_PROJECT }}"
-          jf docker push ${REPOSITORY_PREFIX}/spring-petclinic-cloud-discovery-service:${{ github.run_number }}  --project "${{ vars.JFROG_PROJECT }}"
-          jf docker push ${REPOSITORY_PREFIX}/spring-petclinic-cloud-config-server:${{ github.run_number }}  --project "${{ vars.JFROG_PROJECT }}"
+          for service in spring-petclinic-cloud-api-gateway spring-petclinic-cloud-visits-service spring-petclinic-cloud-vets-service spring-petclinic-cloud-customers-service spring-petclinic-cloud-admin-server spring-petclinic-cloud-discovery-service spring-petclinic-cloud-config-server; do
+            docker tag ${service}:latest ${REPOSITORY_PREFIX}/${service}:${{ github.run_number }}
+            jf docker push ${REPOSITORY_PREFIX}/${service}:${{ github.run_number }} --project "${{ vars.JFROG_PROJECT }}"
+          done
       - name: Publish to JFrog Artifactory
         run: |
           # Collect environment variables for the build
