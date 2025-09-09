@@ -49,11 +49,34 @@ jobs:
       - name : Config JFrog CLI
         run : |
           jf mvnc --repo-deploy-releases=${{ vars.MVN_DEV_REPO_DEPLOY_RELEASES }} --repo-deploy-snapshots=${{ vars.MVN_DEV_REPO_DEPLOY_SNAPSHOTS }} --repo-resolve-releases=${{ vars.MVN_DEV_REPO_RESOLVE_RELEASES }} --repo-resolve-snapshots=${{ vars.MVN_DEV_REPO_RESOLVE_SNAPSHOTS }} 
+
+
+      - name: Validate Artifactory Dependencies
+        run: |
+          # Check for corrupted POMs before building
+          if jf rt search "*.pom" --size=0 --repo=${{ vars.MVN_DEV_REPO_DEPLOY_RELEASES }} | jq -e 'length > 0'; then
+            echo "Found corrupted POM files, cleaning up..."
+            jf rt search "*.pom" --size=0 --repo=${{ vars.MVN_DEV_REPO_DEPLOY_RELEASES }} | \
+              jq -r '.[] | .repo + "/" + .path + "/" + .name' | \
+              xargs -I {} jf rt delete "{}" --quiet
+          fi
+        
+    - name: Align Project Versioning
+        run: |
+          PROJECT_VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout | sed 's/-SNAPSHOT//')
+          UNIFIED_VERSION="${PROJECT_VERSION}.${GITHUB_RUN_NUMBER}"
+          
+          echo "UNIFIED_VERSION=${UNIFIED_VERSION}" >> $GITHUB_ENV
+          
+          # Update POM version to match container version
+          mvn versions:set -DnewVersion=${UNIFIED_VERSION} -DgenerateBackupPoms=false
+        
+          
       - name: Build Maven 
         env:
           REPOSITORY_PREFIX: "artifactory.rodolphef.org/dev-oci"
         run:  |
-          jf mvn -B -DskipTests=true spring-boot:build-image -Pk8s -DREPOSITORY_PREFIX=$REPOSITORY_PREFIX -DVERSION=${{ github.run_number }}  --project "${{ vars.JFROG_PROJECT }}"
+          jf mvn -B -DskipTests=true spring-boot:build-image -Pk8s -DREPOSITORY_PREFIX=$REPOSITORY_PREFIX -DVERSION=2.6.3-build-${{ github.run_number }}  --project "${{ vars.JFROG_PROJECT }}"
       # - name: Scan docker image locally with JFrog Xray
       #   env:
       #     REPOSITORY_PREFIX: "artifactory.rodolphef.org/dev-oci"
@@ -124,7 +147,17 @@ jobs:
           jf rbc --build-name Java_CI_with_Maven --build-number ${{github.run_number}} --signing-key=${{ secrets.KEY_ALIAS }} spring-petclinic-cloud ${{github.run_number}}  --sync=true --project "${{ vars.JFROG_PROJECT }}"
           jf evd create --predicate ./feature.json --predicate-type=https://jfrog.com/evidence/test-results/v1 \
           --release-bundle spring-petclinic-cloud  --release-bundle-version 1.${{ github.run_number }}.0 \
-          --key private.pem  --key-alias Evidence  --project=${{ vars.JF_PROJECT }} --markdown feature-flags.md
+          --key private.pem  --key-alias Evidence  --project=${{ vars.JFROG_PROJECT }} --markdown feature-flags.md
+  provenance:
+  needs: [build]
+  uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v2.0.0
+  with:
+    image: ${{ needs.build.outputs.image }}
+    digest: ${{ needs.build.outputs.digest }}
+    private-repository: true
+  secrets:
+    registry-username: ${{ secrets.REGISTRY_USERNAME }}
+    registry-password: ${{ secrets.JF_ACCESS_TOKEN }}
   # provenance:
   #   needs: [build]
   #   uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v2.0.0

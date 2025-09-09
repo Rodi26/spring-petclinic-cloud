@@ -22,7 +22,7 @@ spec:
       containers:
       - image: ${REPOSITORY_PREFIX}/spring-petclinic-cloud-api-gateway:48
         name: api-gateway
-        imagePullPolicy: Always
+        imagePullPolicy: IfNotPresent
         livenessProbe:
           httpGet:
             port: 8080
