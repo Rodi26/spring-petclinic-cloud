@@ -54,22 +54,36 @@ jobs:
       - name: Validate Artifactory Dependencies
         run: |
           # Check for corrupted POMs before building
-          if jf rt search "*.pom" --size=0 --repo=${{ vars.MVN_DEV_REPO_DEPLOY_RELEASES }} | jq -e 'length > 0'; then
+          echo "Checking for corrupted artifacts in repository..."
+          SEARCH_RESULT=$(jf rt search "${{ vars.MVN_DEV_REPO_DEPLOY_RELEASES }}/*.pom" --size=0 --format=json 2>/dev/null || echo "[]")
+          if echo "$SEARCH_RESULT" | jq -e 'length > 0' >/dev/null 2>&1; then
             echo "Found corrupted POM files, cleaning up..."
-            jf rt search "*.pom" --size=0 --repo=${{ vars.MVN_DEV_REPO_DEPLOY_RELEASES }} | \
-              jq -r '.[] | .repo + "/" + .path + "/" + .name' | \
-              xargs -I {} jf rt delete "{}" --quiet
+            echo "$SEARCH_RESULT" | jq -r '.[] | .repo + "/" + .path + "/" + .name' | \
+              while read -r artifact; do
+                echo "Deleting corrupted artifact: $artifact"
+                jf rt delete "$artifact" --quiet || true
+              done
+          else
+            echo "No corrupted POM files found"
           fi
         
       - name: Align Project Versioning
         run: |
+          # Get base version from POM (remove -SNAPSHOT if present)
           PROJECT_VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout | sed 's/-SNAPSHOT//')
           UNIFIED_VERSION="${PROJECT_VERSION}.${GITHUB_RUN_NUMBER}"
           
+          echo "Current project version: $PROJECT_VERSION"
+          echo "New unified version: $UNIFIED_VERSION"
           echo "UNIFIED_VERSION=${UNIFIED_VERSION}" >> $GITHUB_ENV
           
           # Update POM version to match container version
-          mvn versions:set -DnewVersion=${UNIFIED_VERSION} -DgenerateBackupPoms=false
+          # Use -DprocessParent=true to handle inherited versions properly
+          mvn versions:set -DnewVersion=${UNIFIED_VERSION} -DgenerateBackupPoms=false -DprocessAllModules=true -DprocessParent=true
+          
+          # Verify version was updated correctly
+          NEW_VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
+          echo "Version after update: $NEW_VERSION"
         
           
       - name: Build Maven 
