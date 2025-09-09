@@ -53,7 +53,9 @@ jobs:
 
       - name: Validate Artifactory Dependencies
         run: |
-          # Check for corrupted POMs before building
+          # - name: Validate POM files
+          jf mvn validate
+          
           echo "Checking for corrupted artifacts in repository..."
           SEARCH_RESULT=$(jf rt search "${{ vars.MVN_DEV_REPO_DEPLOY_RELEASES }}/*.pom" --size=0 --format=json 2>/dev/null || echo "[]")
           if echo "$SEARCH_RESULT" | jq -e 'length > 0' >/dev/null 2>&1; then
@@ -77,13 +79,22 @@ jobs:
           echo "New unified version: $UNIFIED_VERSION"
           echo "UNIFIED_VERSION=${UNIFIED_VERSION}" >> $GITHUB_ENV
           
-          # Update POM version to match container version
-          # Use -DprocessParent=true to handle inherited versions properly
-          mvn versions:set -DnewVersion=${UNIFIED_VERSION} -DgenerateBackupPoms=false -DprocessAllModules=true -DprocessParent=true
-          
-          # Verify version was updated correctly
-          NEW_VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
-          echo "Version after update: $NEW_VERSION"
+          # Check if version is inherited from parent
+          PARENT_VERSION=$(mvn help:evaluate -Dexpression=project.parent.version -q -DforceStdout 2>/dev/null || echo "")
+          if [ "$PROJECT_VERSION" = "$PARENT_VERSION" ] && [ -n "$PARENT_VERSION" ]; then
+            echo "Version is inherited from parent POM, skipping version update"
+            echo "Will use build number in container tags instead"
+            echo "CONTAINER_VERSION=${UNIFIED_VERSION}" >> $GITHUB_ENV
+          else
+            echo "Version is not inherited, updating POM version"
+            # Update POM version to match container version
+            mvn versions:set -DnewVersion=${UNIFIED_VERSION} -DgenerateBackupPoms=false -DprocessAllModules=true
+            
+            # Verify version was updated correctly
+            NEW_VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
+            echo "Version after update: $NEW_VERSION"
+            echo "CONTAINER_VERSION=${NEW_VERSION}" >> $GITHUB_ENV
+          fi
         
           
       - name: Build Maven 
