@@ -149,6 +149,7 @@ jobs:
           done
       - name: Publish to JFrog Artifactory
         run: |
+          jf plugin install evd --version latest
           # Collect environment variables for the build
           jf rt bce --project "${{ vars.JFROG_PROJECT }}" 
           # Collect VCS details from git and add them to the build
