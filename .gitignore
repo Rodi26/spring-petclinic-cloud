@@ -33,3 +33,5 @@ spring-petclinic-visits-service/.factorypath
 private.pem
 public.pem
 signing-key.pem
+public.pem
+public.pem
