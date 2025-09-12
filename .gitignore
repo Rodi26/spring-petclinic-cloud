@@ -32,3 +32,4 @@ spring-petclinic-visits-service/.factorypath
 .github/workflows/build.yml
 private.pem
 public.pem
+signing-key.pem
