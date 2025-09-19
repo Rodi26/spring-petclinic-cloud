@@ -167,7 +167,19 @@ jobs:
           --key private.pem --key-alias evidence --markdown test-results.md --project=${{ vars.JFROG_PROJECT }}
       - name: Create Release Bundle for RLM
         run: |
-          jf rbc --build-name Java_CI_with_Maven --build-number ${{github.run_number}} --signing-key=${{ secrets.KEY_ALIAS }} spring-petclinic-cloud 2.6.3-build-${{github.run_number}}  --sync=true --project "${{ vars.JFROG_PROJECT }}"
+          # Create file spec for Docker artifacts only
+          cat > release-bundle-spec.json << EOF
+          {
+            "files": [
+              {
+                "pattern": "dev-oci-local/spring-petclinic-cloud-*/2.6.3-build-${{github.run_number}}/*"
+              }
+            ]
+          }
+          EOF
+          
+          # Create release bundle using file spec to avoid Maven artifact resolution issues
+          jf rbc --spec release-bundle-spec.json --signing-key=default-rsa-key spring-petclinic-cloud 2.6.3-build-${{github.run_number}} --sync=true
           jf evd create --predicate ./feature.json --predicate-type=https://jfrog.com/evidence/test-results/v1 \
           --release-bundle spring-petclinic-cloud  --release-bundle-version 1.${{ github.run_number }}.0 \
           --key private.pem  --key-alias evidence  --project=${{ vars.JFROG_PROJECT }} --markdown feature-flags.md
