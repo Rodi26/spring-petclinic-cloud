@@ -172,7 +172,7 @@ jobs:
           {
             "files": [
               {
-                "pattern": "dev-oci-local/spring-petclinic-cloud-*/2.6.3-build-${{github.run_number}}/*"
+                "pattern": "dev-oci-local/spring-petclinic-cloud-*/${{github.run_number}}/*"
               }
             ]
           }
