@@ -362,7 +362,7 @@ jobs:
           # Configure ORAS with JFrog credentials (non-interactive)
           echo "Configuring ORAS for JFrog Artifactory..."
           REGISTRY_HOST="artifactory.rodolphef.org"
-          if echo "${{ secrets.JF_ACCESS_TOKEN }}" | oras login ${REGISTRY_HOST} --username rodolphef --password-stdin; then
+          if echo "${{ secrets.JF_ACCESS_TOKEN }}" | oras login ${REGISTRY_HOST} --username admin --password-stdin; then
             echo "✅ ORAS login successful"
           else
             echo "❌ ORAS login failed, skipping OCI evidence push"
@@ -517,7 +517,7 @@ jobs:
     with:
       image: ${{ needs.build.outputs.image }}
       digest: ${{ needs.build.outputs.digest }}
-      registry-username: rodolphef
+      registry-username: admin
       private-repository: true
     secrets:
       registry-password: ${{ secrets.JF_ACCESS_TOKEN }}
