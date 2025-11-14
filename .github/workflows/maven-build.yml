@@ -304,26 +304,51 @@ jobs:
             echo "Installing ORAS..."
             curl -LO https://github.com/oras-project/oras/releases/download/v1.1.0/oras_1.1.0_linux_amd64.tar.gz
             tar -xzf oras_1.1.0_linux_amd64.tar.gz
-            sudo mv oras /usr/local/bin/
+            mkdir -p $HOME/bin
+            mv oras $HOME/bin/
+            echo "$HOME/bin" >> $GITHUB_PATH
+            export PATH="$HOME/bin:$PATH"
           fi
           
-          # Configure ORAS with JFrog credentials
+          # Verify ORAS installation
+          oras version || { echo "ORAS installation failed"; exit 1; }
+          
+          # Configure ORAS with JFrog credentials (non-interactive)
           echo "Configuring ORAS for JFrog Artifactory..."
-          oras login ${{ vars.JF_HOST }} --username ${{ secrets.REGISTRY_USERNAME }} --password ${{ secrets.JF_ACCESS_TOKEN }}
+          if echo "${{ secrets.JF_ACCESS_TOKEN }}" | oras login ${{ vars.JF_HOST }} --username ${{ secrets.REGISTRY_USERNAME }} --password-stdin; then
+            echo "✅ ORAS login successful"
+          else
+            echo "❌ ORAS login failed, skipping OCI evidence push"
+            exit 0
+          fi
+          
+          # Verify evidence files exist
+          if [[ ! -f "api_test_run.json" || ! -f "test-results.md" || ! -f "deployment_evidence.json" || ! -f "deployment-results.md" ]]; then
+            echo "❌ Evidence files not found, skipping OCI evidence push"
+            exit 0
+          fi
           
           # Push evidence artifacts for each service to OCI repository
           for service in spring-petclinic-cloud-api-gateway spring-petclinic-cloud-visits-service spring-petclinic-cloud-vets-service spring-petclinic-cloud-customers-service spring-petclinic-cloud-admin-server spring-petclinic-cloud-discovery-service spring-petclinic-cloud-config-server; do
             echo "Pushing evidence artifacts for ${service} to OCI repository..."
             
             # Create evidence bundle
-            tar -czf ${service}-evidence-${{ env.CONTAINER_VERSION }}.tar.gz \
+            echo "Creating evidence bundle for ${service}..."
+            if tar -czf ${service}-evidence-${{ env.CONTAINER_VERSION }}.tar.gz \
               api_test_run.json \
               test-results.md \
               deployment_evidence.json \
-              deployment-results.md
+              deployment-results.md; then
+              echo "✅ Evidence bundle created: ${service}-evidence-${{ env.CONTAINER_VERSION }}.tar.gz"
+              ls -la ${service}-evidence-${{ env.CONTAINER_VERSION }}.tar.gz
+            else
+              echo "❌ Failed to create evidence bundle for ${service}"
+              continue
+            fi
             
             # Push evidence bundle as OCI artifact
-            oras push ${{ vars.JF_HOST }}/dev-oci-local/${service}-evidence:${{ env.CONTAINER_VERSION }} \
+            echo "Pushing evidence bundle to OCI repository..."
+            if oras push ${{ vars.JF_HOST }}/dev-oci-local/${service}-evidence:${{ env.CONTAINER_VERSION }} \
               ${service}-evidence-${{ env.CONTAINER_VERSION }}.tar.gz:application/vnd.jfrog.evidence.bundle.v1+gzip \
               --annotation "org.opencontainers.image.title=${service} Evidence Bundle" \
               --annotation "org.opencontainers.image.description=Evidence artifacts for ${service} version ${{ env.CONTAINER_VERSION }}" \
@@ -331,13 +356,23 @@ jobs:
               --annotation "org.opencontainers.image.created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
               --annotation "com.jfrog.evidence.type=test-deployment" \
               --annotation "com.jfrog.evidence.service=${service}" \
-              --annotation "com.jfrog.evidence.build=${{ github.run_number }}" || echo "Warning: ORAS push failed for ${service}"
+              --annotation "com.jfrog.evidence.build=${{ github.run_number }}"; then
+              echo "✅ Evidence bundle pushed successfully for ${service}"
+            else
+              echo "❌ ORAS push failed for ${service}"
+              continue
+            fi
             
             # Attach evidence to the container image
-            oras attach ${{ vars.JF_HOST }}/dev-oci-local/${service}:${{ env.CONTAINER_VERSION }} \
+            echo "Attaching evidence to container image..."
+            if oras attach ${{ vars.JF_HOST }}/dev-oci-local/${service}:${{ env.CONTAINER_VERSION }} \
               ${service}-evidence-${{ env.CONTAINER_VERSION }}.tar.gz:application/vnd.jfrog.evidence.bundle.v1+gzip \
               --annotation "org.opencontainers.image.title=Evidence for ${service}" \
-              --annotation "com.jfrog.evidence.attached=true" || echo "Warning: Evidence attachment failed for ${service}"
+              --annotation "com.jfrog.evidence.attached=true"; then
+              echo "✅ Evidence attached successfully to ${service}:${{ env.CONTAINER_VERSION }}"
+            else
+              echo "❌ Evidence attachment failed for ${service}"
+            fi
           done
       - name: Create Release Bundle for RLM
         run: |
