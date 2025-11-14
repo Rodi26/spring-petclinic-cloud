@@ -206,8 +206,8 @@ jobs:
             chmod 600 evidence.key
             echo "✅ Using existing PRIVATE_KEY secret for evidence signing"
             
-          # Use the new generated key alias that matches our private key
-          KEY_ALIAS="evd-key-20251114-125708"
+          # Use the new generated key alias that matches our private key perfectly
+          KEY_ALIAS="evd-key-20251114-140941"
           echo "Using key alias: ${KEY_ALIAS}"
           else
             echo "Generating new signing key for evidence creation..."
@@ -418,7 +418,7 @@ jobs:
             echo "Using generated signing key for release bundle evidence..."
             if jf evd create-evidence --predicate ./feature.json --predicate-type=https://jfrog.com/evidence/feature-flags/v1 \
                --release-bundle spring-petclinic-cloud --release-bundle-version ${{ env.CONTAINER_VERSION }} \
-               --key evidence.key --key-alias evd-key-20251114-125708 --project=${{ vars.JFROG_PROJECT }} --markdown feature-flags.md; then
+               --key evidence.key --key-alias evd-key-20251114-140941 --project=${{ vars.JFROG_PROJECT }} --markdown feature-flags.md; then
               echo "✅ Release bundle evidence created successfully"
             else
               echo "⚠️  Release bundle evidence creation failed, trying fallback..."
@@ -426,7 +426,7 @@ jobs:
               echo "Creating build evidence as fallback..."
               jf evd create-evidence --predicate ./feature.json --predicate-type=https://jfrog.com/evidence/feature-flags/v1 \
               --build-name Java_CI_with_Maven --build-number ${{ github.run_number }} \
-              --key evidence.key --key-alias evd-key-20251114-125708 --project=${{ vars.JFROG_PROJECT }} --markdown feature-flags.md || echo "Build evidence also failed"
+              --key evidence.key --key-alias evd-key-20251114-140941 --project=${{ vars.JFROG_PROJECT }} --markdown feature-flags.md || echo "Build evidence also failed"
             fi
           else
             echo "⚠️  No signing key available, skipping release bundle evidence creation"
