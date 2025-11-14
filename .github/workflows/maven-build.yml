@@ -1105,4 +1105,4 @@ jobs:
   #   secrets:
   #     registry-username: rodolphef@jfrog.com
   #     registry-password: ${{ secrets.JF_ACCESS_TOKEN }}
-            
+            # Authentication fix applied - using rodolphef@jfrog.com as registry username
