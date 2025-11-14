@@ -205,10 +205,31 @@ jobs:
             echo "${{ secrets.PRIVATE_KEY }}" > evidence.key
             chmod 600 evidence.key
             echo "✅ Using existing PRIVATE_KEY secret for evidence signing"
+            
+            # Use the KEY_ALIAS secret if available, otherwise fallback to 'evidence'
+            if [[ -n "${{ secrets.KEY_ALIAS }}" ]]; then
+              KEY_ALIAS="${{ secrets.KEY_ALIAS }}"
+              echo "Using configured key alias: ${KEY_ALIAS}"
+            else
+              KEY_ALIAS="evidence"
+              echo "Using fallback key alias: ${KEY_ALIAS}"
+            fi
           else
             echo "Generating new signing key for evidence creation..."
-            jf evd generate-key-pair --key-file-path . --upload-public-key=true || echo "Key generation failed, will try without signing"
+            # Generate key and capture the alias
+            KEY_OUTPUT=$(jf evd generate-key-pair --key-file-path . --upload-public-key=true 2>&1)
+            if [[ $? -eq 0 ]]; then
+              # Extract the key alias from the output
+              KEY_ALIAS=$(echo "$KEY_OUTPUT" | grep -o "evd-key-[0-9-]*" | head -1)
+              echo "✅ Generated new key with alias: $KEY_ALIAS"
+            else
+              echo "❌ Key generation failed, will try without signing"
+              KEY_ALIAS=""
+            fi
           fi
+          
+          # Export key alias for use in subsequent steps
+          echo "KEY_ALIAS=${KEY_ALIAS}" >> $GITHUB_ENV
           
           # Create required predicate files for test evidence
           cat > api_test_run.json << EOF
@@ -280,10 +301,10 @@ jobs:
               # Create evidence for OCI artifact using subject-repo-path and manifest digest
               if [[ -f "evidence.key" ]]; then
                 echo "Creating OCI evidence for ${service}..."
-                jf evd create-evidence --predicate=api_test_run.json --predicate-type=https://jfrog.com/evidence/test-results/v1 \
-                --subject-repo-path dev-oci-local/${service}/${{ env.CONTAINER_VERSION }}/manifest.json \
-                --subject-sha256 ${MANIFEST_DIGEST} \
-                --key evidence.key --key-alias ${{ secrets.KEY_ALIAS }} --markdown test-results.md --project=${{ vars.JFROG_PROJECT }} || echo "Warning: OCI evidence creation failed for ${service}"
+              jf evd create-evidence --predicate=api_test_run.json --predicate-type=https://jfrog.com/evidence/test-results/v1 \
+              --subject-repo-path dev-oci-local/${service}/${{ env.CONTAINER_VERSION }}/manifest.json \
+              --subject-sha256 ${MANIFEST_DIGEST} \
+              --key evidence.key --key-alias ${{ env.KEY_ALIAS }} --markdown test-results.md --project=${{ vars.JFROG_PROJECT }} || echo "Warning: OCI evidence creation failed for ${service}"
               else
                 echo "No signing key available, skipping evidence creation for ${service}"
                 echo "Evidence creation requires a signing key"
@@ -363,7 +384,7 @@ jobs:
                 jf evd create-evidence --predicate=deployment_evidence.json --predicate-type=https://jfrog.com/evidence/deployment/v1 \
                 --subject-repo-path dev-oci-local/${service}/${{ env.CONTAINER_VERSION }}/manifest.json \
                 --subject-sha256 ${MANIFEST_DIGEST} \
-                --key evidence.key --key-alias ${{ secrets.KEY_ALIAS }} --markdown deployment-results.md --project=${{ vars.JFROG_PROJECT }} || echo "Warning: OCI deployment evidence creation failed for ${service}"
+                --key evidence.key --key-alias ${{ env.KEY_ALIAS }} --markdown deployment-results.md --project=${{ vars.JFROG_PROJECT }} || echo "Warning: OCI deployment evidence creation failed for ${service}"
               else
                 echo "No signing key available, skipping deployment evidence creation for ${service}"
                 echo "Evidence creation requires a signing key"
@@ -528,7 +549,7 @@ jobs:
             echo "Using generated signing key for release bundle evidence..."
             if jf evd create-evidence --predicate ./feature.json --predicate-type=https://jfrog.com/evidence/feature-flags/v1 \
                --release-bundle spring-petclinic-cloud --release-bundle-version ${{ env.CONTAINER_VERSION }} \
-               --key evidence.key --key-alias ${{ secrets.KEY_ALIAS }} --project=${{ vars.JFROG_PROJECT }} --markdown feature-flags.md; then
+               --key evidence.key --key-alias ${{ env.KEY_ALIAS }} --project=${{ vars.JFROG_PROJECT }} --markdown feature-flags.md; then
               echo "✅ Release bundle evidence created successfully"
             else
               echo "⚠️  Release bundle evidence creation failed, trying fallback..."
@@ -536,7 +557,7 @@ jobs:
               echo "Creating build evidence as fallback..."
               jf evd create-evidence --predicate ./feature.json --predicate-type=https://jfrog.com/evidence/feature-flags/v1 \
               --build-name Java_CI_with_Maven --build-number ${{ github.run_number }} \
-              --key evidence.key --key-alias ${{ secrets.KEY_ALIAS }} --project=${{ vars.JFROG_PROJECT }} --markdown feature-flags.md || echo "Build evidence also failed"
+              --key evidence.key --key-alias ${{ env.KEY_ALIAS }} --project=${{ vars.JFROG_PROJECT }} --markdown feature-flags.md || echo "Build evidence also failed"
             fi
           else
             echo "⚠️  No signing key available, skipping release bundle evidence creation"
@@ -705,7 +726,7 @@ jobs:
               if [[ -f "evidence.key" ]]; then
                 jf evd create-evidence --predicate=slsa_provenance_evidence.json --predicate-type=https://slsa.dev/provenance/v1 \
                 --package-name ${service} --package-version ${CONTAINER_VERSION} --package-repo-name dev-oci-local \
-                --key evidence.key --key-alias ${{ secrets.KEY_ALIAS }} --markdown slsa-provenance-results.md --project=${{ vars.JFROG_PROJECT }} || echo "Warning: SLSA container evidence creation failed for ${service}"
+                --key evidence.key --key-alias ${{ env.KEY_ALIAS }} --markdown slsa-provenance-results.md --project=${{ vars.JFROG_PROJECT }} || echo "Warning: SLSA container evidence creation failed for ${service}"
               else
                 echo "No signing key available, skipping SLSA evidence creation for ${service}"
               fi
@@ -853,7 +874,7 @@ jobs:
             if [[ -f "evidence.key" ]]; then
               jf evd create-evidence --predicate=github_actions_evidence.json --predicate-type=https://github.com/actions/evidence/v1 \
               --package-name ${service} --package-version ${CONTAINER_VERSION} --package-repo-name dev-oci-local \
-              --key evidence.key --key-alias ${{ secrets.KEY_ALIAS }} --markdown github-actions-results.md --project=${{ vars.JFROG_PROJECT }} || echo "Warning: GitHub evidence creation failed for ${service}"
+              --key evidence.key --key-alias ${{ env.KEY_ALIAS }} --markdown github-actions-results.md --project=${{ vars.JFROG_PROJECT }} || echo "Warning: GitHub evidence creation failed for ${service}"
             else
               echo "No signing key available, skipping GitHub evidence creation for ${service}"
             fi
@@ -1003,7 +1024,7 @@ jobs:
             if [[ -f "evidence.key" ]]; then
               jf evd create-evidence --predicate=github_attestation_evidence.json --predicate-type=https://github.com/attestations/build-provenance/v1 \
               --package-name ${service} --package-version ${CONTAINER_VERSION} --package-repo-name dev-oci-local \
-              --key evidence.key --key-alias ${{ secrets.KEY_ALIAS }} --markdown github-attestation-results.md --project=${{ vars.JFROG_PROJECT }} || echo "Warning: GitHub Attestation evidence creation failed for ${service}"
+              --key evidence.key --key-alias ${{ env.KEY_ALIAS }} --markdown github-attestation-results.md --project=${{ vars.JFROG_PROJECT }} || echo "Warning: GitHub Attestation evidence creation failed for ${service}"
             else
               echo "No signing key available, skipping GitHub Attestation evidence creation for ${service}"
             fi
@@ -1123,7 +1144,7 @@ jobs:
             if [[ -f "evidence.key" ]]; then
               jf evd create-evidence --predicate=xray-scan-report.json --predicate-type=https://jfrog.com/evidence/xray-results/v1 \
               --package-name ${service} --package-version ${CONTAINER_VERSION} --package-repo-name dev-oci-local \
-              --key evidence.key --key-alias ${{ secrets.KEY_ALIAS }} --markdown xray-scan-report.md --project=${{ vars.JFROG_PROJECT }} || echo "Warning: Xray results evidence creation failed for ${service}"
+              --key evidence.key --key-alias ${{ env.KEY_ALIAS }} --markdown xray-scan-report.md --project=${{ vars.JFROG_PROJECT }} || echo "Warning: Xray results evidence creation failed for ${service}"
             else
               echo "No signing key available, skipping Xray evidence creation for ${service}"
             fi
