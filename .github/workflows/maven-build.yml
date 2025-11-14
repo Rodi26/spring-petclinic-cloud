@@ -255,7 +255,7 @@ jobs:
           for service in spring-petclinic-cloud-api-gateway spring-petclinic-cloud-visits-service spring-petclinic-cloud-vets-service spring-petclinic-cloud-customers-service spring-petclinic-cloud-admin-server spring-petclinic-cloud-discovery-service spring-petclinic-cloud-config-server; do
             echo "Creating test evidence for ${service} and pushing to OCI repository..."
             # Create evidence without signing key (key is optional)
-            jf evd create --predicate=api_test_run.json --predicate-type=https://jfrog.com/evidence/test-results/v1 \
+            jf evd create-evidence --predicate=api_test_run.json --predicate-type=https://jfrog.com/evidence/test-results/v1 \
             --package-name ${service} --package-version ${{ env.CONTAINER_VERSION }} --package-repo-name dev-oci-local \
             --subject-repo-path dev-oci-local/${service} --markdown test-results.md --project=${{ vars.JFROG_PROJECT }} || echo "Warning: Evidence creation failed for ${service}"
           done
@@ -316,7 +316,7 @@ jobs:
           for service in spring-petclinic-cloud-api-gateway spring-petclinic-cloud-visits-service spring-petclinic-cloud-vets-service spring-petclinic-cloud-customers-service spring-petclinic-cloud-admin-server spring-petclinic-cloud-discovery-service spring-petclinic-cloud-config-server; do
             echo "Creating deployment evidence for ${service} and pushing to OCI repository..."
             # Create deployment evidence without signing key (key is optional)
-            jf evd create --predicate=deployment_evidence.json --predicate-type=https://jfrog.com/evidence/deployment/v1 \
+            jf evd create-evidence --predicate=deployment_evidence.json --predicate-type=https://jfrog.com/evidence/deployment/v1 \
             --package-name ${service} --package-version ${{ env.CONTAINER_VERSION }} --package-repo-name dev-oci-local \
             --subject-repo-path dev-oci-local/${service} --markdown deployment-results.md --project=${{ vars.JFROG_PROJECT }} || echo "Warning: Deployment evidence creation failed for ${service}"
           done
@@ -454,7 +454,7 @@ jobs:
           
           # Try to create evidence for the release bundle with error handling
           echo "Attempting to create release bundle evidence..."
-          if jf evd create --predicate ./feature.json --predicate-type=https://jfrog.com/evidence/feature-flags/v1 \
+          if jf evd create-evidence --predicate ./feature.json --predicate-type=https://jfrog.com/evidence/feature-flags/v1 \
              --release-bundle spring-petclinic-cloud --release-bundle-version ${{ env.CONTAINER_VERSION }} \
              --project=${{ vars.JFROG_PROJECT }} --markdown feature-flags.md; then
             echo "✅ Release bundle evidence created successfully"
@@ -464,7 +464,7 @@ jobs:
             
             # Alternative: Create evidence for the build instead
             echo "Creating build evidence as fallback..."
-            jf evd create --predicate ./feature.json --predicate-type=https://jfrog.com/evidence/feature-flags/v1 \
+            jf evd create-evidence --predicate ./feature.json --predicate-type=https://jfrog.com/evidence/feature-flags/v1 \
             --build-name Java_CI_with_Maven --build-number ${{ github.run_number }} \
             --project=${{ vars.JFROG_PROJECT }} --markdown feature-flags.md || echo "Build evidence also failed"
           fi
@@ -628,7 +628,7 @@ jobs:
             echo "📦 Creating SLSA Container provenance evidence..."
             for service in spring-petclinic-cloud-api-gateway spring-petclinic-cloud-visits-service spring-petclinic-cloud-vets-service spring-petclinic-cloud-customers-service spring-petclinic-cloud-admin-server spring-petclinic-cloud-discovery-service spring-petclinic-cloud-config-server; do
               echo "Creating SLSA container provenance evidence for ${service} in RLM..."
-              jf evd create --predicate=slsa_provenance_evidence.json --predicate-type=https://slsa.dev/provenance/v1 \
+              jf evd create-evidence --predicate=slsa_provenance_evidence.json --predicate-type=https://slsa.dev/provenance/v1 \
               --package-name ${service} --package-version ${CONTAINER_VERSION} --package-repo-name dev-oci-local \
               --subject-repo-path dev-oci-local/${service} --markdown slsa-provenance-results.md --project=${{ vars.JFROG_PROJECT }} || echo "Warning: SLSA container evidence creation failed for ${service}"
             done
@@ -772,7 +772,7 @@ jobs:
           # Create GitHub evidence for each microservice in RLM
           for service in spring-petclinic-cloud-api-gateway spring-petclinic-cloud-visits-service spring-petclinic-cloud-vets-service spring-petclinic-cloud-customers-service spring-petclinic-cloud-admin-server spring-petclinic-cloud-discovery-service spring-petclinic-cloud-config-server; do
             echo "Creating GitHub Actions evidence for ${service} in RLM..."
-            jf evd create --predicate=github_actions_evidence.json --predicate-type=https://github.com/actions/evidence/v1 \
+            jf evd create-evidence --predicate=github_actions_evidence.json --predicate-type=https://github.com/actions/evidence/v1 \
             --package-name ${service} --package-version ${CONTAINER_VERSION} --package-repo-name dev-oci-local \
             --subject-repo-path dev-oci-local/${service} --markdown github-actions-results.md --project=${{ vars.JFROG_PROJECT }} || echo "Warning: GitHub evidence creation failed for ${service}"
           done
@@ -918,7 +918,7 @@ jobs:
           # Create GitHub Attestation evidence for each microservice in RLM
           for service in spring-petclinic-cloud-api-gateway spring-petclinic-cloud-visits-service spring-petclinic-cloud-vets-service spring-petclinic-cloud-customers-service spring-petclinic-cloud-admin-server spring-petclinic-cloud-discovery-service spring-petclinic-cloud-config-server; do
             echo "Creating GitHub Attestation evidence for ${service} in RLM..."
-            jf evd create --predicate=github_attestation_evidence.json --predicate-type=https://github.com/attestations/build-provenance/v1 \
+            jf evd create-evidence --predicate=github_attestation_evidence.json --predicate-type=https://github.com/attestations/build-provenance/v1 \
             --package-name ${service} --package-version ${CONTAINER_VERSION} --package-repo-name dev-oci-local \
             --subject-repo-path dev-oci-local/${service} --markdown github-attestation-results.md --project=${{ vars.JFROG_PROJECT }} || echo "Warning: GitHub Attestation evidence creation failed for ${service}"
           done
@@ -1062,7 +1062,7 @@ jobs:
           # Create scan results evidence for each microservice in RLM
           for service in spring-petclinic-cloud-api-gateway spring-petclinic-cloud-visits-service spring-petclinic-cloud-vets-service spring-petclinic-cloud-customers-service spring-petclinic-cloud-admin-server spring-petclinic-cloud-discovery-service spring-petclinic-cloud-config-server; do
             echo "Creating Xray scan results evidence for ${service} in RLM..."
-            jf evd create --predicate=xray-scan-report.json --predicate-type=https://jfrog.com/evidence/xray-results/v1 \
+            jf evd create-evidence --predicate=xray-scan-report.json --predicate-type=https://jfrog.com/evidence/xray-results/v1 \
             --package-name ${service} --package-version ${CONTAINER_VERSION} --package-repo-name dev-oci-local \
             --subject-repo-path dev-oci-local/${service} --markdown xray-scan-report.md --project=${{ vars.JFROG_PROJECT }} || echo "Warning: Xray results evidence creation failed for ${service}"
           done
