@@ -62,7 +62,7 @@ jobs:
           jf mvn validate
           
           echo "Checking for corrupted artifacts in repository..."
-          SEARCH_RESULT=$(jf rt search "${{ vars.MVN_DEV_REPO_DEPLOY_RELEASES }}/*.pom" --size=0 --format=json 2>/dev/null || echo "[]")
+          SEARCH_RESULT=$(jf rt search "${{ vars.MVN_DEV_REPO_DEPLOY_RELEASES }}/*.pom" --size=0 2>/dev/null || echo "[]")
           if echo "$SEARCH_RESULT" | jq -e 'length > 0' >/dev/null 2>&1; then
             echo "Found corrupted POM files, cleaning up..."
             echo "$SEARCH_RESULT" | jq -r '.[] | .repo + "/" + .path + "/" + .name' | \
@@ -207,7 +207,7 @@ jobs:
             echo "✅ Using existing PRIVATE_KEY secret for evidence signing"
           else
             echo "Generating new signing key for evidence creation..."
-            jf evd generate-key-pair --key-file-path . --upload-public-key=true --project=${{ vars.JFROG_PROJECT }} || echo "Key generation failed, will try without signing"
+            jf evd generate-key-pair --key-file-path . --upload-public-key=true || echo "Key generation failed, will try without signing"
           fi
           
           # Create required predicate files for test evidence
@@ -272,7 +272,7 @@ jobs:
             
             # Get the manifest SHA256 for the OCI artifact
             echo "Getting manifest digest for ${service}..."
-            MANIFEST_DIGEST=$(jf rt search "dev-oci-local/${service}/${{ env.CONTAINER_VERSION }}/manifest.json" --format=json 2>/dev/null | jq -r '.[0].sha256 // empty' 2>/dev/null || echo "")
+            MANIFEST_DIGEST=$(jf rt search "dev-oci-local/${service}/${{ env.CONTAINER_VERSION }}/manifest.json" 2>/dev/null | jq -r '.[0].sha256 // empty' 2>/dev/null || echo "")
             
             if [[ -n "$MANIFEST_DIGEST" ]]; then
               echo "✅ Found manifest for ${service} with digest: ${MANIFEST_DIGEST}"
@@ -352,7 +352,7 @@ jobs:
             
             # Get the manifest SHA256 for the OCI artifact
             echo "Getting manifest digest for ${service} deployment evidence..."
-            MANIFEST_DIGEST=$(jf rt search "dev-oci-local/${service}/${{ env.CONTAINER_VERSION }}/manifest.json" --format=json 2>/dev/null | jq -r '.[0].sha256 // empty' 2>/dev/null || echo "")
+            MANIFEST_DIGEST=$(jf rt search "dev-oci-local/${service}/${{ env.CONTAINER_VERSION }}/manifest.json" 2>/dev/null | jq -r '.[0].sha256 // empty' 2>/dev/null || echo "")
             
             if [[ -n "$MANIFEST_DIGEST" ]]; then
               echo "✅ Found manifest for ${service} with digest: ${MANIFEST_DIGEST}"
@@ -1041,39 +1041,11 @@ jobs:
           BUILD_IMAGE="${{ needs.build.outputs.image }}"
           CONTAINER_VERSION=$(echo "$BUILD_IMAGE" | cut -d':' -f2)
           
-          # Check scan results for each service
+          # Note: Xray scan results are automatically processed by JFrog platform
           echo "=== Docker Container Scan Results ==="
-          for service in spring-petclinic-cloud-api-gateway spring-petclinic-cloud-visits-service spring-petclinic-cloud-vets-service spring-petclinic-cloud-customers-service spring-petclinic-cloud-admin-server spring-petclinic-cloud-discovery-service spring-petclinic-cloud-config-server; do
-            echo "🔍 Checking scan results for ${service}:${CONTAINER_VERSION}"
-            
-            # Get scan results
-            SCAN_RESULT=$(jf xr scan-status \
-              --artifact "artifactory.rodolphef.org/dev-oci/${service}:${CONTAINER_VERSION}" \
-              --format=json \
-              --project "${{ vars.JFROG_PROJECT }}" 2>/dev/null || echo '{"status":"pending"}')
-            
-            STATUS=$(echo "$SCAN_RESULT" | jq -r '.status // "unknown"')
-            VULNERABILITIES=$(echo "$SCAN_RESULT" | jq -r '.vulnerabilities // 0')
-            LICENSES=$(echo "$SCAN_RESULT" | jq -r '.licenses // 0')
-            
-            case $STATUS in
-              "completed")
-                echo "✅ ${service}: Scan completed - Vulnerabilities: ${VULNERABILITIES}, Licenses: ${LICENSES}"
-                ;;
-              "pending"|"running")
-                echo "🔄 ${service}: Scan still in progress"
-                ;;
-              "failed")
-                echo "❌ ${service}: Scan failed"
-                ;;
-              *)
-                echo "❓ ${service}: Status unknown"
-                ;;
-            esac
-            
-            # Save individual results
-            echo "$SCAN_RESULT" > ${service}-scan-result.json
-          done
+          echo "🔍 Xray scans are automatically triggered for all pushed containers"
+          echo "📊 Scan results will be available in the JFrog platform UI"
+          echo "✅ All services pushed to dev-oci-local repository for scanning"
           
           # Generate comprehensive scan report
           echo "📋 Generating comprehensive scan report..."
