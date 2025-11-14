@@ -25,9 +25,11 @@ jobs:
         java: [ '11' ]
     env:
       REPOSITORY_PREFIX: "artifactory.rodolphef.org/dev-oci"
+      DOCKER_REPO: "dev-oci-local"
+      IMAGE_NAME: "spring-petclinic-cloud"
     outputs:
-      image:  ${{ vars.JF_HOST }}/${{ env.DOCKER_REPO }}/${{ env.IMAGE_NAME }}
-      digest: ${{ steps.build.outputs.digest }}
+      image: ${{ vars.JF_HOST }}/${{ env.DOCKER_REPO }}/${{ env.IMAGE_NAME }}:${{ env.CONTAINER_VERSION }}
+      digest: ${{ steps.docker-push.outputs.digest }}
     steps:
       - name: checkout Git repository
         uses: actions/checkout@v4
@@ -102,8 +104,8 @@ jobs:
       - name: Build Maven 
         env:
           REPOSITORY_PREFIX: "artifactory.rodolphef.org/dev-oci"
-        run:  |
-          jf mvn -B -DskipTests=true spring-boot:build-image -Pk8s -DREPOSITORY_PREFIX=$REPOSITORY_PREFIX -DVERSION=2.6.3-build-${{ github.run_number }}  --project "${{ vars.JFROG_PROJECT }}"
+        run: |
+          jf mvn -B -DskipTests=true spring-boot:build-image -Pk8s -DREPOSITORY_PREFIX=$REPOSITORY_PREFIX -DVERSION=${{ env.CONTAINER_VERSION }} --project "${{ vars.JFROG_PROJECT }}"
       # - name: Scan docker image locally with JFrog Xray
       #   env:
       #     REPOSITORY_PREFIX: "artifactory.rodolphef.org/dev-oci"
@@ -135,20 +137,23 @@ jobs:
       #   uses: github/codeql-action/upload-sarif@v3
       #   with: 
       #     sarif_file: |
-      #       /home /runner/work/spring-petclinic-cloud/spring-petclinic-cloud/jfrog_docker_scan_cloud-api-gateway.sarif
+      #       /home/runner/work/spring-petclinic-cloud/spring-petclinic-cloud/jfrog_docker_scan_cloud-api-gateway.sarif
       #       /home/runner/work/spring-petclinic-cloud/spring-petclinic-cloud/jfrog_docker_scan_cloud-visits-service.sarif
       #       /home/runner/work/spring-petclinic-cloud/spring-petclinic-cloud/jfrog_docker_scan_cloud-vets-service.sarif
       #       /home/runner/work/spring-petclinic-cloud/spring-petclinic-cloud/jfrog_docker_scan_cloud-customers-service.sarif
-      #       /home/runner/work/spring-petclinic-cloud/spring-petclinic-cloudjfrog_docker_scan_cloud-admin-server.sarif
+      #       /home/runner/work/spring-petclinic-cloud/spring-petclinic-cloud/jfrog_docker_scan_cloud-admin-server.sarif
       #       /home/runner/work/spring-petclinic-cloud/spring-petclinic-cloud/jfrog_docker_scan_cloud-discovery-service.sarif
       #       /home/runner/work/spring-petclinic-cloud/spring-petclinic-cloud/jfrog_docker_scan_cloud-config-server.sarif
       - name: Push container image to JFrog Artifactory
+        id: docker-push
         env:
           REPOSITORY_PREFIX: "artifactory.rodolphef.org/dev-oci"
-        run:  |
+        run: |
           for service in spring-petclinic-cloud-api-gateway spring-petclinic-cloud-visits-service spring-petclinic-cloud-vets-service spring-petclinic-cloud-customers-service spring-petclinic-cloud-admin-server spring-petclinic-cloud-discovery-service spring-petclinic-cloud-config-server; do
-            jf docker push ${REPOSITORY_PREFIX}/${service}:2.6.3-build-${{ github.run_number }} --project "${{ vars.JFROG_PROJECT }}"
+            jf docker push ${REPOSITORY_PREFIX}/${service}:${{ env.CONTAINER_VERSION }} --project "${{ vars.JFROG_PROJECT }}"
           done
+          # Set digest output for the main service
+          echo "digest=$(docker inspect ${REPOSITORY_PREFIX}/spring-petclinic-cloud-api-gateway:${{ env.CONTAINER_VERSION }} --format '{{index .RepoDigests 0}}' 2>/dev/null || echo 'sha256:unknown')" >> $GITHUB_OUTPUT
       - name: Publish to JFrog Artifactory
         run: |
           # Collect environment variables for the build
@@ -163,7 +168,7 @@ jobs:
         id: create-evd  
         run: |
           jf evd create --predicate=api_test_run.json --predicate-type=https://jfrog.com/evidence/test-results/v1 \
-          --package-name spring-petclinic-cloud-customers-service --package-version 2.6.3-build-${{ github.run_number }} --package-repo-name dev-oci-local \
+          --package-name spring-petclinic-cloud-customers-service --package-version ${{ env.CONTAINER_VERSION }} --package-repo-name dev-oci-local \
           --key private.pem --key-alias evidence --markdown test-results.md --project=${{ vars.JFROG_PROJECT }}
       - name: Create Release Bundle for RLM
         run: |
@@ -172,16 +177,16 @@ jobs:
           {
             "files": [
               {
-                "pattern": "dev-oci-local/spring-petclinic-cloud-*/2.6.3-build-${{github.run_number}}/*"
+                "pattern": "dev-oci-local/spring-petclinic-cloud-*/${{ env.CONTAINER_VERSION }}/*"
               }
             ]
           }
           EOF
           
           # Create release bundle using file spec to avoid Maven artifact resolution issues
-          jf rbc --spec release-bundle-spec.json --signing-key=default-rsa-key spring-petclinic-cloud 2.6.3-build-${{github.run_number}} --sync=true
+          jf rbc --spec release-bundle-spec.json --signing-key=default-rsa-key spring-petclinic-cloud ${{ env.CONTAINER_VERSION }} --sync=true
           jf evd create --predicate ./feature.json --predicate-type=https://jfrog.com/evidence/test-results/v1 \
-          --release-bundle spring-petclinic-cloud  --release-bundle-version 2.6.3-build-${{ github.run_number }} \
+          --release-bundle spring-petclinic-cloud --release-bundle-version ${{ env.CONTAINER_VERSION }} \
           --key private.pem  --key-alias evidence  --project=${{ vars.JFROG_PROJECT }} --markdown feature-flags.md
   provenance:
     needs: [build]
