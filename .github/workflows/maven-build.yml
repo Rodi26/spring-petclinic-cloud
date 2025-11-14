@@ -262,18 +262,32 @@ jobs:
           - Maven: 3.8.x
           EOF
           
+          # Wait for packages to be indexed in JFrog before creating evidence
+          echo "Waiting for packages to be indexed in JFrog Artifactory..."
+          sleep 10
+          
           # Create evidence for each microservice and push to OCI repository
           for service in spring-petclinic-cloud-api-gateway spring-petclinic-cloud-visits-service spring-petclinic-cloud-vets-service spring-petclinic-cloud-customers-service spring-petclinic-cloud-admin-server spring-petclinic-cloud-discovery-service spring-petclinic-cloud-config-server; do
             echo "Creating test evidence for ${service} and pushing to OCI repository..."
-            # Try with key first, fallback without key if it fails
-            if [[ -f "evidence.key" ]]; then
-              echo "Using signing key for ${service}..."
-              jf evd create-evidence --predicate=api_test_run.json --predicate-type=https://jfrog.com/evidence/test-results/v1 \
-              --package-name ${service} --package-version ${{ env.CONTAINER_VERSION }} --package-repo-name dev-oci-local \
-              --key evidence.key --key-alias ${{ secrets.KEY_ALIAS }} --markdown test-results.md --project=${{ vars.JFROG_PROJECT }} || echo "Warning: Evidence creation with key failed for ${service}"
+            
+            # First verify the package exists in the repository
+            echo "Verifying ${service} exists in repository..."
+            if jf rt search "dev-oci-local/${service}/${{ env.CONTAINER_VERSION }}/*" --format=json | jq -e 'length > 0' >/dev/null 2>&1; then
+              echo "✅ Package ${service} found in repository"
+              
+              # Try with key first, fallback without key if it fails
+              if [[ -f "evidence.key" ]]; then
+                echo "Using signing key for ${service}..."
+                jf evd create-evidence --predicate=api_test_run.json --predicate-type=https://jfrog.com/evidence/test-results/v1 \
+                --package-name ${service} --package-version ${{ env.CONTAINER_VERSION }} --package-repo-name dev-oci-local \
+                --key evidence.key --key-alias ${{ secrets.KEY_ALIAS }} --markdown test-results.md --project=${{ vars.JFROG_PROJECT }} || echo "Warning: Evidence creation with key failed for ${service}"
+              else
+                echo "No signing key available, skipping evidence creation for ${service}"
+                echo "Evidence creation requires a signing key"
+              fi
             else
-              echo "No signing key available, skipping evidence creation for ${service}"
-              echo "Evidence creation requires a signing key"
+              echo "⚠️  Package ${service} not found in repository, skipping evidence creation"
+              echo "This might be due to timing - package may still be processing"
             fi
           done
       - name: Create deployment evidence for all microservices
@@ -332,15 +346,25 @@ jobs:
           # Create deployment evidence for each microservice and push to OCI repository
           for service in spring-petclinic-cloud-api-gateway spring-petclinic-cloud-visits-service spring-petclinic-cloud-vets-service spring-petclinic-cloud-customers-service spring-petclinic-cloud-admin-server spring-petclinic-cloud-discovery-service spring-petclinic-cloud-config-server; do
             echo "Creating deployment evidence for ${service} and pushing to OCI repository..."
-            # Try with key first, fallback without key if it fails
-            if [[ -f "evidence.key" ]]; then
-              echo "Using signing key for ${service} deployment evidence..."
-              jf evd create-evidence --predicate=deployment_evidence.json --predicate-type=https://jfrog.com/evidence/deployment/v1 \
-              --package-name ${service} --package-version ${{ env.CONTAINER_VERSION }} --package-repo-name dev-oci-local \
-              --key evidence.key --key-alias ${{ secrets.KEY_ALIAS }} --markdown deployment-results.md --project=${{ vars.JFROG_PROJECT }} || echo "Warning: Deployment evidence creation with key failed for ${service}"
+            
+            # First verify the package exists in the repository
+            echo "Verifying ${service} exists in repository for deployment evidence..."
+            if jf rt search "dev-oci-local/${service}/${{ env.CONTAINER_VERSION }}/*" --format=json | jq -e 'length > 0' >/dev/null 2>&1; then
+              echo "✅ Package ${service} found in repository"
+              
+              # Try with key first, fallback without key if it fails
+              if [[ -f "evidence.key" ]]; then
+                echo "Using signing key for ${service} deployment evidence..."
+                jf evd create-evidence --predicate=deployment_evidence.json --predicate-type=https://jfrog.com/evidence/deployment/v1 \
+                --package-name ${service} --package-version ${{ env.CONTAINER_VERSION }} --package-repo-name dev-oci-local \
+                --key evidence.key --key-alias ${{ secrets.KEY_ALIAS }} --markdown deployment-results.md --project=${{ vars.JFROG_PROJECT }} || echo "Warning: Deployment evidence creation with key failed for ${service}"
+              else
+                echo "No signing key available, skipping deployment evidence creation for ${service}"
+                echo "Evidence creation requires a signing key"
+              fi
             else
-              echo "No signing key available, skipping deployment evidence creation for ${service}"
-              echo "Evidence creation requires a signing key"
+              echo "⚠️  Package ${service} not found in repository, skipping deployment evidence creation"
+              echo "This might be due to timing - package may still be processing"
             fi
           done
       - name: Push evidence artifacts to OCI repository using ORAS
