@@ -267,7 +267,7 @@ jobs:
             # Also create OCI artifact reference for the evidence
             echo "Creating OCI evidence artifact reference for ${service}..."
           jf evd create --predicate=api_test_run.json --predicate-type=https://jfrog.com/evidence/test-results/v1 \
-            --subject-repo dev-oci-local --subject-name ${service} --subject-version ${{ env.CONTAINER_VERSION }} \
+            --subject-repo-path dev-oci-local/${service} --subject-version ${{ env.CONTAINER_VERSION }} \
             --markdown test-results.md --project=${{ vars.JFROG_PROJECT }} || echo "Warning: OCI evidence artifact creation failed for ${service}"
           done
       - name: Create deployment evidence for all microservices
@@ -339,7 +339,7 @@ jobs:
             # Also create OCI artifact reference for deployment evidence
             echo "Creating OCI deployment evidence artifact reference for ${service}..."
             jf evd create --predicate=deployment_evidence.json --predicate-type=https://jfrog.com/evidence/deployment/v1 \
-            --subject-repo dev-oci-local --subject-name ${service} --subject-version ${{ env.CONTAINER_VERSION }} \
+            --subject-repo-path dev-oci-local/${service} --subject-version ${{ env.CONTAINER_VERSION }} \
             --markdown deployment-results.md --project=${{ vars.JFROG_PROJECT }} || echo "Warning: OCI deployment evidence artifact creation failed for ${service}"
           done
       - name: Push evidence artifacts to OCI repository using ORAS
@@ -361,7 +361,8 @@ jobs:
           
           # Configure ORAS with JFrog credentials (non-interactive)
           echo "Configuring ORAS for JFrog Artifactory..."
-          if echo "${{ secrets.JF_ACCESS_TOKEN }}" | oras login ${{ vars.JF_HOST }} --username ${{ secrets.REGISTRY_USERNAME }} --password-stdin; then
+          REGISTRY_HOST="artifactory.rodolphef.org"
+          if echo "${{ secrets.JF_ACCESS_TOKEN }}" | oras login ${REGISTRY_HOST} --username rodolphef@jfrog.com --password-stdin; then
             echo "✅ ORAS login successful"
           else
             echo "❌ ORAS login failed, skipping OCI evidence push"
@@ -394,7 +395,7 @@ jobs:
             
             # Push evidence bundle as OCI artifact
             echo "Pushing evidence bundle to OCI repository..."
-            if oras push ${{ vars.JF_HOST }}/dev-oci-local/${service}-evidence:${{ env.CONTAINER_VERSION }} \
+            if oras push ${REGISTRY_HOST}/dev-oci-local/${service}-evidence:${{ env.CONTAINER_VERSION }} \
               ${service}-evidence-${{ env.CONTAINER_VERSION }}.tar.gz:application/vnd.jfrog.evidence.bundle.v1+gzip \
               --annotation "org.opencontainers.image.title=${service} Evidence Bundle" \
               --annotation "org.opencontainers.image.description=Evidence artifacts for ${service} version ${{ env.CONTAINER_VERSION }}" \
@@ -411,7 +412,7 @@ jobs:
             
             # Attach evidence to the container image
             echo "Attaching evidence to container image..."
-            if oras attach ${{ vars.JF_HOST }}/dev-oci-local/${service}:${{ env.CONTAINER_VERSION }} \
+            if oras attach ${REGISTRY_HOST}/dev-oci-local/${service}:${{ env.CONTAINER_VERSION }} \
               ${service}-evidence-${{ env.CONTAINER_VERSION }}.tar.gz:application/vnd.jfrog.evidence.bundle.v1+gzip \
               --annotation "org.opencontainers.image.title=Evidence for ${service}" \
               --annotation "com.jfrog.evidence.attached=true"; then
@@ -1106,3 +1107,4 @@ jobs:
   #     registry-username: rodolphef@jfrog.com
   #     registry-password: ${{ secrets.JF_ACCESS_TOKEN }}
             # Authentication fix applied - using rodolphef@jfrog.com as registry username
+            
