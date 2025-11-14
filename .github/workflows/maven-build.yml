@@ -278,37 +278,9 @@ jobs:
           - Maven: 3.8.x
           EOF
           
-          # Wait for packages to be indexed in JFrog before creating evidence
-          echo "Waiting for packages to be indexed in JFrog Artifactory..."
-          sleep 10
-          
-          # Create evidence for each microservice and push to OCI repository
-          for service in spring-petclinic-cloud-api-gateway spring-petclinic-cloud-visits-service spring-petclinic-cloud-vets-service spring-petclinic-cloud-customers-service spring-petclinic-cloud-admin-server spring-petclinic-cloud-discovery-service spring-petclinic-cloud-config-server; do
-            echo "Creating test evidence for ${service} and pushing to OCI repository..."
-            
-            # Get the manifest SHA256 for the OCI artifact
-            echo "Getting manifest digest for ${service}..."
-            MANIFEST_DIGEST=$(jf rt search "dev-oci-local/${service}/${{ env.CONTAINER_VERSION }}/manifest.json" 2>/dev/null | jq -r '.[0].sha256 // empty' 2>/dev/null || echo "")
-            
-            if [[ -n "$MANIFEST_DIGEST" ]]; then
-              echo "✅ Found manifest for ${service} with digest: ${MANIFEST_DIGEST}"
-              
-              # Create evidence for OCI artifact using subject-repo-path and manifest digest
-              if [[ -f "evidence.key" ]]; then
-                echo "Creating OCI evidence for ${service}..."
-              jf evd create-evidence --predicate=api_test_run.json --predicate-type=https://jfrog.com/evidence/test-results/v1 \
-              --subject-repo-path dev-oci-local/${service}/${{ env.CONTAINER_VERSION }}/manifest.json \
-              --subject-sha256 ${MANIFEST_DIGEST} \
-              --key evidence.key --key-alias ${{ env.KEY_ALIAS }} --markdown test-results.md --project=${{ vars.JFROG_PROJECT }} || echo "Warning: OCI evidence creation failed for ${service}"
-              else
-                echo "No signing key available, skipping evidence creation for ${service}"
-                echo "Evidence creation requires a signing key"
-              fi
-            else
-              echo "⚠️  Manifest not found for ${service}, skipping evidence creation"
-              echo "This might be due to timing - manifest may still be processing"
-            fi
-          done
+          # Skip individual service evidence creation - will only create evidence for release bundle
+          echo "Skipping individual service evidence creation..."
+          echo "Evidence will be created only for the release bundle"
       - name: Create deployment evidence for all microservices
         continue-on-error: true
         run: |
@@ -362,34 +334,10 @@ jobs:
           All microservices have been successfully built, containerized, and pushed to the development OCI registry.
           EOF
           
-          # Create deployment evidence for each microservice and push to OCI repository
-          for service in spring-petclinic-cloud-api-gateway spring-petclinic-cloud-visits-service spring-petclinic-cloud-vets-service spring-petclinic-cloud-customers-service spring-petclinic-cloud-admin-server spring-petclinic-cloud-discovery-service spring-petclinic-cloud-config-server; do
-            echo "Creating deployment evidence for ${service} and pushing to OCI repository..."
-            
-            # Get the manifest SHA256 for the OCI artifact
-            echo "Getting manifest digest for ${service} deployment evidence..."
-            MANIFEST_DIGEST=$(jf rt search "dev-oci-local/${service}/${{ env.CONTAINER_VERSION }}/manifest.json" 2>/dev/null | jq -r '.[0].sha256 // empty' 2>/dev/null || echo "")
-            
-            if [[ -n "$MANIFEST_DIGEST" ]]; then
-              echo "✅ Found manifest for ${service} with digest: ${MANIFEST_DIGEST}"
-              
-              # Create deployment evidence for OCI artifact using subject-repo-path and manifest digest
-              if [[ -f "evidence.key" ]]; then
-                echo "Creating OCI deployment evidence for ${service}..."
-                jf evd create-evidence --predicate=deployment_evidence.json --predicate-type=https://jfrog.com/evidence/deployment/v1 \
-                --subject-repo-path dev-oci-local/${service}/${{ env.CONTAINER_VERSION }}/manifest.json \
-                --subject-sha256 ${MANIFEST_DIGEST} \
-                --key evidence.key --key-alias ${{ env.KEY_ALIAS }} --markdown deployment-results.md --project=${{ vars.JFROG_PROJECT }} || echo "Warning: OCI deployment evidence creation failed for ${service}"
-              else
-                echo "No signing key available, skipping deployment evidence creation for ${service}"
-                echo "Evidence creation requires a signing key"
-              fi
-            else
-              echo "⚠️  Manifest not found for ${service}, skipping deployment evidence creation"
-              echo "This might be due to timing - manifest may still be processing"
-            fi
-          done
-      - name: Push evidence artifacts to OCI repository using ORAS
+          # Skip individual service deployment evidence creation - will only create evidence for release bundle
+          echo "Skipping individual service deployment evidence creation..."
+          echo "Deployment evidence will be created only for the release bundle"
+      - name: Push release bundle evidence artifacts to OCI repository using ORAS
         continue-on-error: true
         run: |
           # Install ORAS if not available
@@ -422,53 +370,40 @@ jobs:
             exit 0
           fi
           
-          # Push evidence artifacts for each service to OCI repository
-          for service in spring-petclinic-cloud-api-gateway spring-petclinic-cloud-visits-service spring-petclinic-cloud-vets-service spring-petclinic-cloud-customers-service spring-petclinic-cloud-admin-server spring-petclinic-cloud-discovery-service spring-petclinic-cloud-config-server; do
-            echo "Pushing evidence artifacts for ${service} to OCI repository..."
-            
-            # Create evidence bundle
-            echo "Creating evidence bundle for ${service}..."
-            if tar -czf ${service}-evidence-${{ env.CONTAINER_VERSION }}.tar.gz \
-              api_test_run.json \
-              test-results.md \
-              deployment_evidence.json \
-              deployment-results.md; then
-              echo "✅ Evidence bundle created: ${service}-evidence-${{ env.CONTAINER_VERSION }}.tar.gz"
-              ls -la ${service}-evidence-${{ env.CONTAINER_VERSION }}.tar.gz
-            else
-              echo "❌ Failed to create evidence bundle for ${service}"
-              continue
-            fi
-            
-            # Push evidence bundle as OCI artifact
-            echo "Pushing evidence bundle to OCI repository..."
-            if oras push ${REGISTRY_HOST}/dev-oci-local/${service}-evidence:${{ env.CONTAINER_VERSION }} \
-              ${service}-evidence-${{ env.CONTAINER_VERSION }}.tar.gz:application/vnd.jfrog.evidence.bundle.v1+gzip \
-              --annotation "org.opencontainers.image.title=${service} Evidence Bundle" \
-              --annotation "org.opencontainers.image.description=Evidence artifacts for ${service} version ${{ env.CONTAINER_VERSION }}" \
-              --annotation "org.opencontainers.image.version=${{ env.CONTAINER_VERSION }}" \
-              --annotation "org.opencontainers.image.created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-              --annotation "com.jfrog.evidence.type=test-deployment" \
-              --annotation "com.jfrog.evidence.service=${service}" \
-              --annotation "com.jfrog.evidence.build=${{ github.run_number }}"; then
-              echo "✅ Evidence bundle pushed successfully for ${service}"
-            else
-              echo "❌ ORAS push failed for ${service}"
-              continue
-            fi
-            
-            # Attach evidence to the container image
-            echo "Attaching evidence to container image..."
-            if oras attach ${REGISTRY_HOST}/dev-oci-local/${service}:${{ env.CONTAINER_VERSION }} \
-              ${service}-evidence-${{ env.CONTAINER_VERSION }}.tar.gz:application/vnd.jfrog.evidence.bundle.v1+gzip \
-              --artifact-type application/vnd.jfrog.evidence.bundle.v1+gzip \
-              --annotation "org.opencontainers.image.title=Evidence for ${service}" \
-              --annotation "com.jfrog.evidence.attached=true"; then
-              echo "✅ Evidence attached successfully to ${service}:${{ env.CONTAINER_VERSION }}"
-            else
-              echo "❌ Evidence attachment failed for ${service}"
-            fi
-          done
+          # Create and push release bundle evidence artifacts to OCI repository
+          echo "Creating release bundle evidence artifacts..."
+          
+          # Create release bundle evidence bundle
+          echo "Creating release bundle evidence bundle..."
+          if tar -czf spring-petclinic-cloud-release-bundle-evidence-${{ env.CONTAINER_VERSION }}.tar.gz \
+            api_test_run.json \
+            test-results.md \
+            deployment_evidence.json \
+            deployment-results.md \
+            feature.json \
+            feature-flags.md; then
+            echo "✅ Release bundle evidence bundle created: spring-petclinic-cloud-release-bundle-evidence-${{ env.CONTAINER_VERSION }}.tar.gz"
+            ls -la spring-petclinic-cloud-release-bundle-evidence-${{ env.CONTAINER_VERSION }}.tar.gz
+          else
+            echo "❌ Failed to create release bundle evidence bundle"
+            exit 0
+          fi
+          
+          # Push release bundle evidence as OCI artifact
+          echo "Pushing release bundle evidence to OCI repository..."
+          if oras push ${REGISTRY_HOST}/dev-oci-local/spring-petclinic-cloud-release-bundle-evidence:${{ env.CONTAINER_VERSION }} \
+            spring-petclinic-cloud-release-bundle-evidence-${{ env.CONTAINER_VERSION }}.tar.gz:application/vnd.jfrog.evidence.bundle.v1+gzip \
+            --annotation "org.opencontainers.image.title=Spring PetClinic Cloud Release Bundle Evidence" \
+            --annotation "org.opencontainers.image.description=Evidence artifacts for release bundle version ${{ env.CONTAINER_VERSION }}" \
+            --annotation "org.opencontainers.image.version=${{ env.CONTAINER_VERSION }}" \
+            --annotation "org.opencontainers.image.created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --annotation "com.jfrog.evidence.type=release-bundle" \
+            --annotation "com.jfrog.evidence.bundle=spring-petclinic-cloud" \
+            --annotation "com.jfrog.evidence.build=${{ github.run_number }}"; then
+            echo "✅ Release bundle evidence pushed successfully"
+          else
+            echo "❌ ORAS push failed for release bundle evidence"
+          fi
       - name: Create Release Bundle for RLM
         continue-on-error: true
         run: |
@@ -544,7 +479,7 @@ jobs:
             echo "Using generated signing key for release bundle evidence..."
             if jf evd create-evidence --predicate ./feature.json --predicate-type=https://jfrog.com/evidence/feature-flags/v1 \
                --release-bundle spring-petclinic-cloud --release-bundle-version ${{ env.CONTAINER_VERSION }} \
-               --key evidence.key --key-alias ${{ env.KEY_ALIAS }} --project=${{ vars.JFROG_PROJECT }} --markdown feature-flags.md; then
+               --key evidence.key --key-alias evidence --project=${{ vars.JFROG_PROJECT }} --markdown feature-flags.md; then
               echo "✅ Release bundle evidence created successfully"
             else
               echo "⚠️  Release bundle evidence creation failed, trying fallback..."
@@ -552,7 +487,7 @@ jobs:
               echo "Creating build evidence as fallback..."
               jf evd create-evidence --predicate ./feature.json --predicate-type=https://jfrog.com/evidence/feature-flags/v1 \
               --build-name Java_CI_with_Maven --build-number ${{ github.run_number }} \
-              --key evidence.key --key-alias ${{ env.KEY_ALIAS }} --project=${{ vars.JFROG_PROJECT }} --markdown feature-flags.md || echo "Build evidence also failed"
+              --key evidence.key --key-alias evidence --project=${{ vars.JFROG_PROJECT }} --markdown feature-flags.md || echo "Build evidence also failed"
             fi
           else
             echo "⚠️  No signing key available, skipping release bundle evidence creation"
