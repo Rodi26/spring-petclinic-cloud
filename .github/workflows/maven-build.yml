@@ -337,73 +337,12 @@ jobs:
           # Skip individual service deployment evidence creation - will only create evidence for release bundle
           echo "Skipping individual service deployment evidence creation..."
           echo "Deployment evidence will be created only for the release bundle"
-      - name: Push release bundle evidence artifacts to OCI repository using ORAS
+      - name: Sign container images with Cosign (if needed)
         continue-on-error: true
         run: |
-          # Install ORAS if not available
-          if ! command -v oras &> /dev/null; then
-            echo "Installing ORAS..."
-            curl -LO https://github.com/oras-project/oras/releases/download/v1.1.0/oras_1.1.0_linux_amd64.tar.gz
-            tar -xzf oras_1.1.0_linux_amd64.tar.gz
-            mkdir -p $HOME/bin
-            mv oras $HOME/bin/
-            echo "$HOME/bin" >> $GITHUB_PATH
-            export PATH="$HOME/bin:$PATH"
-          fi
-          
-          # Verify ORAS installation
-          oras version || { echo "ORAS installation failed"; exit 1; }
-          
-          # Configure ORAS with JFrog credentials (non-interactive)
-          echo "Configuring ORAS for JFrog Artifactory..."
-          REGISTRY_HOST="artifactory.rodolphef.org"
-          if echo "${{ secrets.ORAS_TOKEN }}" | oras login ${REGISTRY_HOST} --username admin --password-stdin; then
-            echo "✅ ORAS login successful"
-          else
-            echo "❌ ORAS login failed, skipping OCI evidence push"
-            exit 0
-          fi
-          
-          # Verify evidence files exist
-          if [[ ! -f "api_test_run.json" || ! -f "test-results.md" || ! -f "deployment_evidence.json" || ! -f "deployment-results.md" ]]; then
-            echo "❌ Evidence files not found, skipping OCI evidence push"
-            exit 0
-          fi
-          
-          # Create and push release bundle evidence artifacts to OCI repository
-          echo "Creating release bundle evidence artifacts..."
-          
-          # Create release bundle evidence bundle
-          echo "Creating release bundle evidence bundle..."
-          if tar -czf spring-petclinic-cloud-release-bundle-evidence-${{ env.CONTAINER_VERSION }}.tar.gz \
-            api_test_run.json \
-            test-results.md \
-            deployment_evidence.json \
-            deployment-results.md \
-            feature.json \
-            feature-flags.md; then
-            echo "✅ Release bundle evidence bundle created: spring-petclinic-cloud-release-bundle-evidence-${{ env.CONTAINER_VERSION }}.tar.gz"
-            ls -la spring-petclinic-cloud-release-bundle-evidence-${{ env.CONTAINER_VERSION }}.tar.gz
-          else
-            echo "❌ Failed to create release bundle evidence bundle"
-            exit 0
-          fi
-          
-          # Push release bundle evidence as OCI artifact
-          echo "Pushing release bundle evidence to OCI repository..."
-          if oras push ${REGISTRY_HOST}/dev-oci-local/spring-petclinic-cloud-release-bundle-evidence:${{ env.CONTAINER_VERSION }} \
-            spring-petclinic-cloud-release-bundle-evidence-${{ env.CONTAINER_VERSION }}.tar.gz:application/vnd.jfrog.evidence.bundle.v1+gzip \
-            --annotation "org.opencontainers.image.title=Spring PetClinic Cloud Release Bundle Evidence" \
-            --annotation "org.opencontainers.image.description=Evidence artifacts for release bundle version ${{ env.CONTAINER_VERSION }}" \
-            --annotation "org.opencontainers.image.version=${{ env.CONTAINER_VERSION }}" \
-            --annotation "org.opencontainers.image.created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            --annotation "com.jfrog.evidence.type=release-bundle" \
-            --annotation "com.jfrog.evidence.bundle=spring-petclinic-cloud" \
-            --annotation "com.jfrog.evidence.build=${{ github.run_number }}"; then
-            echo "✅ Release bundle evidence pushed successfully"
-          else
-            echo "❌ ORAS push failed for release bundle evidence"
-          fi
+          echo "Evidence and attestations are handled by JFrog CLI and SLSA provenance generation"
+          echo "Cosign signing can be added here if additional container signing is required"
+          echo "For now, focusing on JFrog CLI evidence creation for release bundles"
       - name: Create Release Bundle for RLM
         continue-on-error: true
         run: |
@@ -506,9 +445,8 @@ jobs:
           echo "Maven Build: ✅ Completed"
           echo "Docker Push: ✅ Completed"
           echo "Build Info: ✅ Published"
-          echo "Evidence Creation: ⚠️  May have warnings (continue-on-error enabled)"
-          echo "Release Bundle: ⚠️  May have warnings (continue-on-error enabled)"
-          echo "ORAS Push: ⚠️  May have warnings (continue-on-error enabled)"
+          echo "Release Bundle Evidence: ⚠️  May have warnings (continue-on-error enabled)"
+          echo "JFrog CLI Evidence: ✅ Focused on release bundle only"
           echo "Xray Scanning: ⚡ Temporarily disabled for faster testing"
           echo "=== End Status Summary ==="
           
