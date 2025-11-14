@@ -206,14 +206,9 @@ jobs:
             chmod 600 evidence.key
             echo "✅ Using existing PRIVATE_KEY secret for evidence signing"
             
-            # Use the KEY_ALIAS secret if available, otherwise fallback to 'evidence'
-            if [[ -n "${{ secrets.KEY_ALIAS }}" ]]; then
-              KEY_ALIAS="${{ secrets.KEY_ALIAS }}"
-              echo "Using configured key alias: ${KEY_ALIAS}"
-            else
-              KEY_ALIAS="evidence"
-              echo "Using fallback key alias: ${KEY_ALIAS}"
-            fi
+          # Use 'evidence' key alias which we know exists in your JFrog instance
+          KEY_ALIAS="evidence"
+          echo "Using key alias: ${KEY_ALIAS}"
           else
             echo "Generating new signing key for evidence creation..."
             # Generate key and capture the alias
