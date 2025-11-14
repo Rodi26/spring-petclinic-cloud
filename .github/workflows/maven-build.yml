@@ -362,7 +362,7 @@ jobs:
           # Configure ORAS with JFrog credentials (non-interactive)
           echo "Configuring ORAS for JFrog Artifactory..."
           REGISTRY_HOST="artifactory.rodolphef.org"
-          if echo "${{ secrets.JF_ACCESS_TOKEN }}" | oras login ${REGISTRY_HOST} --username admin --password-stdin; then
+          if echo "${{ secrets.ORAS_TOKEN }}" | oras login ${REGISTRY_HOST} --username admin --password-stdin; then
             echo "✅ ORAS login successful"
           else
             echo "❌ ORAS login failed, skipping OCI evidence push"
@@ -520,7 +520,7 @@ jobs:
       registry-username: admin
       private-repository: true
     secrets:
-      registry-password: ${{ secrets.JF_ACCESS_TOKEN }}
+      registry-password: ${{ secrets.ORAS_TOKEN }}
   
   # Maven provenance for JAR artifacts - TEMPORARILY DISABLED
   # The Maven builder requires different parameters than artifact-list
