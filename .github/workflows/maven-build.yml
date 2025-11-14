@@ -272,7 +272,7 @@ jobs:
             
             # Get the manifest SHA256 for the OCI artifact
             echo "Getting manifest digest for ${service}..."
-            MANIFEST_DIGEST=$(jf rt search "dev-oci-local/${service}/${{ env.CONTAINER_VERSION }}/manifest.json" --format=json | jq -r '.[0].sha256 // empty')
+            MANIFEST_DIGEST=$(jf rt search "dev-oci-local/${service}/${{ env.CONTAINER_VERSION }}/manifest.json" --format=json 2>/dev/null | jq -r '.[0].sha256 // empty' 2>/dev/null || echo "")
             
             if [[ -n "$MANIFEST_DIGEST" ]]; then
               echo "✅ Found manifest for ${service} with digest: ${MANIFEST_DIGEST}"
@@ -352,7 +352,7 @@ jobs:
             
             # Get the manifest SHA256 for the OCI artifact
             echo "Getting manifest digest for ${service} deployment evidence..."
-            MANIFEST_DIGEST=$(jf rt search "dev-oci-local/${service}/${{ env.CONTAINER_VERSION }}/manifest.json" --format=json | jq -r '.[0].sha256 // empty')
+            MANIFEST_DIGEST=$(jf rt search "dev-oci-local/${service}/${{ env.CONTAINER_VERSION }}/manifest.json" --format=json 2>/dev/null | jq -r '.[0].sha256 // empty' 2>/dev/null || echo "")
             
             if [[ -n "$MANIFEST_DIGEST" ]]; then
               echo "✅ Found manifest for ${service} with digest: ${MANIFEST_DIGEST}"
