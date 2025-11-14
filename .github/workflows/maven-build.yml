@@ -517,9 +517,6 @@ jobs:
       image: ${{ needs.build.outputs.image }}
       digest: ${{ needs.build.outputs.digest }}
       private-repository: true
-    secrets:
-      registry-username: rodolphef@jfrog.com
-      registry-password: ${{ secrets.JF_ACCESS_TOKEN }}
   
   # Maven provenance for JAR artifacts - TEMPORARILY DISABLED
   # The Maven builder requires different parameters than artifact-list
