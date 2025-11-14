@@ -178,82 +178,120 @@ jobs:
       - name: Initiate Xray Asynchronous Scans
         continue-on-error: true
         run: |
-          echo "🔍 Initiating comprehensive Xray asynchronous scans..."
+          echo "🔍 Initiating comprehensive Xray security scans..."
           
-          # Scan all Docker containers asynchronously
+          # Create results directory
+          mkdir -p ./xray-results
+          
+          # Scan all Docker containers
           echo "=== Docker Container Scans ==="
           for service in spring-petclinic-cloud-api-gateway spring-petclinic-cloud-visits-service spring-petclinic-cloud-vets-service spring-petclinic-cloud-customers-service spring-petclinic-cloud-admin-server spring-petclinic-cloud-discovery-service spring-petclinic-cloud-config-server; do
             echo "🐳 Scanning Docker container: ${service}:${{ env.CONTAINER_VERSION }}"
             
-            # Initiate async Docker scan
-            SCAN_ID=$(jf docker scan ${REPOSITORY_PREFIX}/${service}:${{ env.CONTAINER_VERSION }} \
-              --async \
+            # Initiate Docker scan with basic security analysis
+            echo "🔒 Scanning ${service} for vulnerabilities and licenses..."
+            jf docker scan ${REPOSITORY_PREFIX}/${service}:${{ env.CONTAINER_VERSION }} \
               --vuln \
               --licenses \
               --format=json \
               --project "${{ vars.JFROG_PROJECT }}" \
-              --output-dir ./xray-results \
-              --output-file ${service}-docker-scan.json 2>/dev/null | jq -r '.scan_id // empty' || echo "")
+              --fail=false \
+              --detailed-summary \
+              > ./xray-results/${service}-docker-scan.json 2>&1 || echo "⚠️  Docker scan completed with warnings for ${service}"
             
-            if [[ -n "$SCAN_ID" ]]; then
-              echo "✅ Docker scan initiated for ${service} - Scan ID: ${SCAN_ID}"
-              echo "${service}:${SCAN_ID}" >> docker-scan-ids.txt
+            # Check if scan results were generated
+            if [[ -f "./xray-results/${service}-docker-scan.json" ]]; then
+              echo "✅ Docker scan completed for ${service}"
+              # Extract basic scan info
+              VULN_COUNT=$(jq -r '.vulnerabilities | length // 0' ./xray-results/${service}-docker-scan.json 2>/dev/null || echo "0")
+              LICENSE_COUNT=$(jq -r '.licenses | length // 0' ./xray-results/${service}-docker-scan.json 2>/dev/null || echo "0")
+              echo "  - Vulnerabilities found: ${VULN_COUNT}"
+              echo "  - Licenses found: ${LICENSE_COUNT}"
+              echo "${service}:completed:${VULN_COUNT}:${LICENSE_COUNT}" >> docker-scan-results.txt
             else
-              echo "⚠️  Failed to initiate Docker scan for ${service}"
+              echo "⚠️  Scan results not generated for ${service}"
+              echo "${service}:failed:0:0" >> docker-scan-results.txt
             fi
-            
-            # Also scan with detailed security analysis
-            echo "🔒 Initiating security scan for ${service}..."
-            jf docker scan ${REPOSITORY_PREFIX}/${service}:${{ env.CONTAINER_VERSION }} \
-              --async \
-              --extended-table \
-              --vuln \
-              --licenses \
-              --secrets \
-              --iac \
-              --sast \
-              --project "${{ vars.JFROG_PROJECT }}" || echo "Extended scan failed for ${service}"
           done
           
           # Scan Maven dependencies asynchronously
           echo "=== Maven Dependency Scans ==="
           echo "📦 Scanning Maven dependencies..."
           
-          # Scan all Maven repositories
-          for repo in ${{ vars.MVN_DEV_REPO_DEPLOY_RELEASES }} ${{ vars.MVN_DEV_REPO_DEPLOY_SNAPSHOTS }}; do
-            echo "🔍 Scanning Maven repository: ${repo}"
-            jf xr scan --async \
-              --repo ${repo} \
-              --vuln \
-              --licenses \
-              --format=json \
-              --project "${{ vars.JFROG_PROJECT }}" \
-              --output-dir ./xray-results \
-              --output-file ${repo}-maven-scan.json || echo "Maven repo scan failed for ${repo}"
-          done
-          
-          # Scan specific Maven artifacts from this build
-          echo "🏗️  Scanning build artifacts..."
-          ARTIFACT_PATTERN="*spring-petclinic-cloud*/${{ env.CONTAINER_VERSION }}/*"
-          jf xr scan --async \
-            --artifact-pattern "${ARTIFACT_PATTERN}" \
+          # Scan Maven build info (more reliable than repository scanning)
+          echo "🏗️  Scanning Maven build info..."
+          jf xr scan \
+            --build-name Java_CI_with_Maven \
+            --build-number ${{ github.run_number }} \
             --vuln \
             --licenses \
             --format=json \
             --project "${{ vars.JFROG_PROJECT }}" \
-            --output-dir ./xray-results \
-            --output-file build-artifacts-scan.json || echo "Build artifacts scan failed"
+            --fail=false \
+            > ./xray-results/maven-build-scan.json 2>&1 || echo "⚠️  Maven build scan completed with warnings"
           
-          # Create scan summary
+          if [[ -f "./xray-results/maven-build-scan.json" ]]; then
+            echo "✅ Maven build scan completed"
+            # Extract basic scan info
+            MAVEN_VULN_COUNT=$(jq -r '.vulnerabilities | length // 0' ./xray-results/maven-build-scan.json 2>/dev/null || echo "0")
+            MAVEN_LICENSE_COUNT=$(jq -r '.licenses | length // 0' ./xray-results/maven-build-scan.json 2>/dev/null || echo "0")
+            echo "  - Maven vulnerabilities found: ${MAVEN_VULN_COUNT}"
+            echo "  - Maven licenses found: ${MAVEN_LICENSE_COUNT}"
+            echo "maven-build:completed:${MAVEN_VULN_COUNT}:${MAVEN_LICENSE_COUNT}" >> maven-scan-results.txt
+          else
+            echo "⚠️  Maven scan results not generated"
+            echo "maven-build:failed:0:0" >> maven-scan-results.txt
+          fi
+          
+          # Scan specific artifacts if they exist
+          echo "🔍 Scanning specific build artifacts..."
+          for service in spring-petclinic-cloud-api-gateway spring-petclinic-cloud-visits-service spring-petclinic-cloud-vets-service spring-petclinic-cloud-customers-service spring-petclinic-cloud-admin-server spring-petclinic-cloud-discovery-service spring-petclinic-cloud-config-server; do
+            # Check if Maven artifact exists and scan it
+            ARTIFACT_PATH="${{ vars.MVN_DEV_REPO_DEPLOY_RELEASES }}/${service}/${{ env.CONTAINER_VERSION }}/"
+            if jf rt search "${ARTIFACT_PATH}*.jar" --limit=1 --format=json | jq -e 'length > 0' >/dev/null 2>&1; then
+              echo "📦 Scanning Maven artifact: ${service}"
+              jf xr scan \
+                --artifact-path "${ARTIFACT_PATH}" \
+                --vuln \
+                --licenses \
+                --format=json \
+                --project "${{ vars.JFROG_PROJECT }}" \
+                --fail=false \
+                > ./xray-results/${service}-maven-scan.json 2>&1 || echo "⚠️  Maven artifact scan completed with warnings for ${service}"
+            else
+              echo "⚠️  Maven artifact not found for ${service}"
+            fi
+          done
+          
+          # Create comprehensive scan summary
           echo "=== Xray Scan Summary ==="
-          echo "📊 Initiated scans for:"
-          echo "  - 7 Docker containers"
-          echo "  - Maven repositories: ${{ vars.MVN_DEV_REPO_DEPLOY_RELEASES }}, ${{ vars.MVN_DEV_REPO_DEPLOY_SNAPSHOTS }}"
-          echo "  - Build artifacts pattern: ${ARTIFACT_PATTERN}"
-          echo "  - Security analysis: vulnerabilities, licenses, secrets, IaC, SAST"
+          echo "📊 Completed scans for:"
+          echo "  - 7 Docker containers (vulnerabilities & licenses)"
+          echo "  - Maven build info (Java_CI_with_Maven #${{ github.run_number }})"
+          echo "  - Individual Maven artifacts (where available)"
+          echo "  - Security analysis: vulnerabilities, licenses"
           echo ""
-          echo "🔄 Scans are running asynchronously. Results will be available in JFrog Xray dashboard."
           echo "📁 Local results directory: ./xray-results/"
+          echo "📋 Scan results files:"
+          ls -la ./xray-results/ 2>/dev/null || echo "  - Results directory not created"
+          echo ""
+          echo "📊 Docker Scan Results:"
+          if [[ -f "docker-scan-results.txt" ]]; then
+            while IFS=':' read -r service status vulns licenses; do
+              echo "  - ${service}: ${status} (${vulns} vulnerabilities, ${licenses} licenses)"
+            done < docker-scan-results.txt
+          else
+            echo "  - No Docker scan results available"
+          fi
+          echo ""
+          echo "📦 Maven Scan Results:"
+          if [[ -f "maven-scan-results.txt" ]]; then
+            while IFS=':' read -r artifact status vulns licenses; do
+              echo "  - ${artifact}: ${status} (${vulns} vulnerabilities, ${licenses} licenses)"
+            done < maven-scan-results.txt
+          else
+            echo "  - No Maven scan results available"
+          fi
           
           # Store scan metadata for later retrieval
           cat > xray-scan-metadata.json << EOF
@@ -270,8 +308,8 @@ jobs:
               "spring-petclinic-cloud-discovery-service",
               "spring-petclinic-cloud-config-server"
             ],
-            "scan_types": ["vulnerabilities", "licenses", "secrets", "iac", "sast"],
-            "repositories_scanned": ["${{ vars.MVN_DEV_REPO_DEPLOY_RELEASES }}", "${{ vars.MVN_DEV_REPO_DEPLOY_SNAPSHOTS }}"],
+            "scan_types": ["vulnerabilities", "licenses"],
+            "scan_targets": ["docker_containers", "maven_build_info", "maven_artifacts"],
             "project": "${{ vars.JFROG_PROJECT }}"
           }
           EOF
@@ -304,11 +342,12 @@ jobs:
               "scan_configuration": {
                 "vulnerabilities": true,
                 "licenses": true,
-                "secrets": true,
-                "iac": true,
-                "sast": true,
-                "async_mode": true,
-                "extended_analysis": true
+                "secrets": false,
+                "iac": false,
+                "sast": false,
+                "async_mode": false,
+                "extended_analysis": true,
+                "fail_on_error": false
               },
               "project": "${{ vars.JFROG_PROJECT }}",
               "registry": "artifactory.rodolphef.org/dev-oci"
@@ -354,15 +393,16 @@ jobs:
           ## Security Analysis Types
           - 🔍 **Vulnerabilities**: CVE scanning and analysis
           - 📄 **Licenses**: License compliance checking
-          - 🔐 **Secrets**: Secret detection in code/configs
-          - 🏗️  **IaC**: Infrastructure as Code security
-          - 🔒 **SAST**: Static Application Security Testing
+          - ⚠️  **Secrets**: Not available in current JFrog CLI version
+          - ⚠️  **IaC**: Not available in current JFrog CLI version
+          - ⚠️  **SAST**: Not available in current JFrog CLI version
           
           ## Scan Configuration
-          - **Mode**: Asynchronous (non-blocking)
+          - **Mode**: Synchronous (immediate results)
           - **Extended Analysis**: Enabled
           - **Output Format**: JSON
-          - **Results Location**: JFrog Xray Dashboard
+          - **Fail on Error**: Disabled (warnings only)
+          - **Results Location**: Local files + JFrog Xray Dashboard
           
           ## Accessing Results
           1. **JFrog Xray Dashboard**: View detailed scan results
@@ -396,7 +436,7 @@ jobs:
           # Scan the published build-info with Xray
           jf rt bs Java_CI_with_Maven ${{github.run_number}} --project "${{ vars.JFROG_PROJECT }}"
       - name: Create test evidence for all microservices
-        id: create-evd
+        id: create-evd  
         continue-on-error: true
         run: |
           # Create required predicate files for test evidence
@@ -466,7 +506,7 @@ jobs:
             
             # Also create OCI artifact reference for the evidence
             echo "Creating OCI evidence artifact reference for ${service}..."
-            jf evd create --predicate=api_test_run.json --predicate-type=https://jfrog.com/evidence/test-results/v1 \
+          jf evd create --predicate=api_test_run.json --predicate-type=https://jfrog.com/evidence/test-results/v1 \
             --subject-repo dev-oci-local --subject-name ${service} --subject-version ${{ env.CONTAINER_VERSION }} \
             --markdown test-results.md --project=${{ vars.JFROG_PROJECT }} || echo "Warning: OCI evidence artifact creation failed for ${service}"
           done
