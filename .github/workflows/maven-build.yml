@@ -229,7 +229,7 @@ jobs:
                 --release-bundle spring-petclinic-cloud \
                 --release-bundle-version ${{ env.CONTAINER_VERSION }} \
                 --key evidence.key \
-                --key-alias evd-key-20251114-125708 \
+                --key-alias evidence \
                 --project=${{ vars.JFROG_PROJECT }} \
                 --markdown feature-flags.md 2>&1; then
                 echo "✅ Release bundle evidence created successfully"
@@ -241,7 +241,7 @@ jobs:
                   --build-name Java_CI_with_Maven \
                   --build-number ${{ github.run_number }} \
                   --key evidence.key \
-                  --key-alias evd-key-20251114-125708 \
+                  --key-alias evidence \
                   --project=${{ vars.JFROG_PROJECT }} \
                   --markdown feature-flags.md || true
               fi
@@ -255,7 +255,7 @@ jobs:
                 --build-name Java_CI_with_Maven \
                 --build-number ${{ github.run_number }} \
                 --key evidence.key \
-                --key-alias evd-key-20251114-125708 \
+                --key-alias evidence \
                 --project=${{ vars.JFROG_PROJECT }} \
                 --markdown feature-flags.md || true
             fi
