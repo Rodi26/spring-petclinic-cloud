@@ -15,6 +15,7 @@ permissions:
   packages: write # for uploading attestations
   contents: read # read the contents permission
   security-events: write # for uploading code scanning
+  attestations: write # for actions/attest-build-provenance
 
 jobs:
   build:
@@ -28,17 +29,17 @@ jobs:
       DOCKER_REPO: "dev-oci-local"
       IMAGE_NAME: "spring-petclinic-cloud"
     outputs:
-      image: artifactory.rodolphef.org/${{ env.DOCKER_REPO }}/${{ env.IMAGE_NAME }}:${{ env.CONTAINER_VERSION }}
+      image: ${{ steps.export-version.outputs.image }}
       digest: ${{ steps.docker-push.outputs.digest }}
-      container_version: ${{ env.CONTAINER_VERSION }}
+      container_version: ${{ steps.export-version.outputs.container_version }}
     steps:
       - name: checkout Git repository
         uses: actions/checkout@v4
 
-      - name: Set up JDK ${{matrix.java}}
+      - name: Set up JDK ${{ matrix.java }}
         uses: actions/setup-java@v4
         with:
-          java-version: ${{matrix.java}}
+          java-version: ${{ matrix.java }}
           distribution: 'adopt'
           cache: maven
 
@@ -96,6 +97,13 @@ jobs:
             echo "CONTAINER_VERSION=${NEW_VERSION}" >> $GITHUB_ENV
           fi
 
+      - name: Export container image metadata
+        id: export-version
+        run: |
+          echo "Using container version: ${CONTAINER_VERSION}"
+          echo "container_version=${CONTAINER_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "image=artifactory.rodolphef.org/${DOCKER_REPO}/${IMAGE_NAME}:${CONTAINER_VERSION}" >> "$GITHUB_OUTPUT"
+
       - name: Build Maven
         env:
           REPOSITORY_PREFIX: "artifactory.rodolphef.org/dev-oci"
@@ -125,7 +133,7 @@ jobs:
           jf rt bce --project "${{ vars.JFROG_PROJECT }}"
           jf rt bag --project "${{ vars.JFROG_PROJECT }}"
           jf rt bp --project "${{ vars.JFROG_PROJECT }}"
-          jf rt bs Java_CI_with_Maven ${{github.run_number}} --project "${{ vars.JFROG_PROJECT }}"
+          jf rt bs Java_CI_with_Maven ${{ github.run_number }} --project "${{ vars.JFROG_PROJECT }}"
 
       - name: Create Release Bundle for RLM
         continue-on-error: true
@@ -170,7 +178,7 @@ jobs:
           EOF
           
           echo "📦 Creating release bundle..."
-          jf rbc --spec release-bundle-spec.json --signing-key=default-rsa-key spring-petclinic-cloud ${{ env.CONTAINER_VERSION }} --sync=true  --project=${{ vars.JFROG_PROJECT }}
+          jf rbc --spec release-bundle-spec.json --signing-key=default-rsa-key spring-petclinic-cloud ${{ env.CONTAINER_VERSION }} --sync=true --project=${{ vars.JFROG_PROJECT }}
           echo "rb_created=true" >> $GITHUB_OUTPUT
 
       - name: Wait for Release Bundle Indexing
@@ -226,7 +234,7 @@ jobs:
           echo "Version: ${{ env.CONTAINER_VERSION }}"
           echo "Build: ${{ github.run_number }}"
 
-     container-provenance:
+  container-provenance:
     needs: [build]
     uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v2.1.0
     with:
@@ -255,6 +263,8 @@ jobs:
     needs: [build, container-provenance]
     runs-on: ubuntu-latest
     if: always() && needs.container-provenance.result == 'success'
+    env:
+      CONTAINER_VERSION: ${{ needs.build.outputs.container_version }}
     steps:
       - name: Setup JFrog CLI
         uses: jfrog/setup-jfrog-cli@v4
@@ -679,162 +689,4 @@ jobs:
     if: always() && needs.build.result == 'success'
     steps:
       - name: Setup JFrog CLI
-        uses: jfrog/setup-jfrog-cli@v4
-        env:
-          JF_URL: ${{ secrets.JF_URL }}
-          JF_ACCESS_TOKEN: ${{ secrets.JF_ACCESS_TOKEN }}
-      
-      - name: Configure JFrog CLI
-        run: |
-          jf mvnc --repo-deploy-releases=${{ vars.MVN_DEV_REPO_DEPLOY_RELEASES }} --repo-deploy-snapshots=${{ vars.MVN_DEV_REPO_DEPLOY_SNAPSHOTS }} --repo-resolve-releases=${{ vars.MVN_DEV_REPO_RESOLVE_RELEASES }} --repo-resolve-snapshots=${{ vars.MVN_DEV_REPO_RESOLVE_SNAPSHOTS }}
-      
-      - name: Wait for Xray scans to complete
-        run: |
-          echo "⏳ Waiting for Xray asynchronous scans to complete..."
-          echo "Waiting 2 minutes for scans to process..."
-          sleep 120
-      
-      - name: Check Xray scan results
-        continue-on-error: true
-        run: |
-          echo "📊 Checking Xray scan results..."
-          
-          # Extract version from build outputs
-          BUILD_IMAGE="${{ needs.build.outputs.image }}"
-          CONTAINER_VERSION=$(echo "$BUILD_IMAGE" | cut -d':' -f2)
-          
-          # Check scan results for each service
-          echo "=== Docker Container Scan Results ==="
-          for service in spring-petclinic-cloud-api-gateway spring-petclinic-cloud-visits-service spring-petclinic-cloud-vets-service spring-petclinic-cloud-customers-service spring-petclinic-cloud-admin-server spring-petclinic-cloud-discovery-service spring-petclinic-cloud-config-server; do
-            echo "🔍 Checking scan results for ${service}:${CONTAINER_VERSION}"
-            
-            # Get scan results
-            SCAN_RESULT=$(jf xr scan-status \
-              --artifact "artifactory.rodolphef.org/dev-oci/${service}:${CONTAINER_VERSION}" \
-              --format=json \
-              --project "${{ vars.JFROG_PROJECT }}" 2>/dev/null || echo '{"status":"pending"}')
-            
-            STATUS=$(echo "$SCAN_RESULT" | jq -r '.status // "unknown"')
-            VULNERABILITIES=$(echo "$SCAN_RESULT" | jq -r '.vulnerabilities // 0')
-            LICENSES=$(echo "$SCAN_RESULT" | jq -r '.licenses // 0')
-            
-            case $STATUS in
-              "completed")
-                echo "✅ ${service}: Scan completed - Vulnerabilities: ${VULNERABILITIES}, Licenses: ${LICENSES}"
-                ;;
-              "pending"|"running")
-                echo "🔄 ${service}: Scan still in progress"
-                ;;
-              "failed")
-                echo "❌ ${service}: Scan failed"
-                ;;
-              *)
-                echo "❓ ${service}: Status unknown"
-                ;;
-            esac
-            
-            # Save individual results
-            echo "$SCAN_RESULT" > ${service}-scan-result.json
-          done
-          
-          # Generate comprehensive scan report
-          echo "📋 Generating comprehensive scan report..."
-          cat > xray-scan-report.json << EOF
-          {
-            "scan_report": {
-              "generated_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-              "build_number": "${{ github.run_number }}",
-              "version": "${CONTAINER_VERSION}",
-              "project": "${{ vars.JFROG_PROJECT }}",
-              "scan_summary": {
-                "total_services": 7,
-                "scanned_services": [
-                  "spring-petclinic-cloud-api-gateway",
-                  "spring-petclinic-cloud-visits-service",
-                  "spring-petclinic-cloud-vets-service",
-                  "spring-petclinic-cloud-customers-service",
-                  "spring-petclinic-cloud-admin-server",
-                  "spring-petclinic-cloud-discovery-service",
-                  "spring-petclinic-cloud-config-server"
-                ],
-                "scan_types": ["vulnerabilities", "licenses", "secrets", "iac", "sast"],
-                "report_generated_by": "GitHub Actions"
-              }
-            }
-          }
-          EOF
-          
-          cat > xray-scan-report.md << EOF
-          # Xray Scan Results Report
-          
-          ## Report Summary
-          - **Generated**: $(date -u +%Y-%m-%dT%H:%M:%SZ)
-          - **Build Number**: ${{ github.run_number }}
-          - **Version**: ${CONTAINER_VERSION}
-          - **Project**: ${{ vars.JFROG_PROJECT }}
-          
-          ## Scan Coverage
-          - **Total Services**: 7
-          - **Docker Containers**: All microservices scanned
-          - **Maven Repositories**: Development repos scanned
-          - **Build Artifacts**: Version-specific artifacts scanned
-          
-          ## Security Analysis
-          - 🔍 **Vulnerability Scanning**: CVE detection and analysis
-          - 📄 **License Compliance**: Open source license verification
-          - 🔐 **Secret Detection**: Hardcoded secrets and credentials
-          - 🏗️  **Infrastructure as Code**: IaC security best practices
-          - 🔒 **Static Analysis**: SAST security testing
-          
-          ## Results Access
-          - **JFrog Xray Dashboard**: Detailed vulnerability reports
-          - **JFrog CLI**: Command-line access to scan data
-          - **REST API**: Programmatic access to results
-          - **Notifications**: Configured alerts for critical findings
-          
-          ## Recommendations
-          1. Review all identified vulnerabilities in Xray dashboard
-          2. Prioritize critical and high-severity issues
-          3. Update dependencies with known vulnerabilities
-          4. Review license compliance issues
-          5. Address any detected secrets or credentials
-          6. Monitor ongoing security posture
-          
-          ## Next Steps
-          - Set up automated vulnerability monitoring
-          - Configure security policies in Xray
-          - Implement automated remediation workflows
-          - Schedule regular security reviews
-          EOF
-          
-          # Create scan results evidence for each microservice in RLM
-          for service in spring-petclinic-cloud-api-gateway spring-petclinic-cloud-visits-service spring-petclinic-cloud-vets-service spring-petclinic-cloud-customers-service spring-petclinic-cloud-admin-server spring-petclinic-cloud-discovery-service spring-petclinic-cloud-config-server; do
-            echo "Creating Xray scan results evidence for ${service} in RLM..."
-            if [[ -f "evidence.key" ]]; then
-              jf evd create-evidence --predicate=xray-scan-report.json --predicate-type=https://jfrog.com/evidence/xray-results/v1 \
-              --package-name ${service} --package-version ${CONTAINER_VERSION} --package-repo-name dev-oci-local \
-              --key evidence.key --key-alias ${{ secrets.KEY_ALIAS }} --markdown xray-scan-report.md --project=${{ vars.JFROG_PROJECT }} || echo "Warning: Xray results evidence creation failed for ${service}"
-            else
-              echo "No signing key available, skipping Xray evidence creation for ${service}"
-            fi
-          done
-          
-          echo "✅ Xray scan results evidence integrated into JFrog RLM"
-          
-          # Summary
-          echo "=== Xray Scan Summary ==="
-          echo "📊 Comprehensive security scanning completed"
-          echo "🔍 Results available in JFrog Xray dashboard"
-          echo "📋 Evidence stored in JFrog RLM for compliance"
-          echo "🔄 Continuous monitoring active"
-  # provenance:
-  #   needs: [build]
-  #   uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v2.0.0
-  #   with:
-  #     image:  ${{ needs.build.outputs.image }}
-  #     digest: ${{ needs.build.outputs.digest }}
-  #     private-repository: true          
-  #   secrets:
-  #     registry-username: rodolphef@jfrog.com
-  #     registry-password: ${{ secrets.JF_ACCESS_TOKEN }}
-            # Authentication fix applied - using rodolphef@jfrog.com as registry username       
+        uses: jfrog/setup-jfrog-cli

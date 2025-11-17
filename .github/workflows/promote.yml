@@ -85,6 +85,11 @@ jobs:
           esac
       - name: checkout Git repository
         uses: actions/checkout@v4
+        with:
+          # On workflow_run, checkout the specific commit that was built.
+          # On other events, this will be empty and checkout the default branch.
+          ref: ${{ github.event.workflow_run.head_sha }}
+
       - name: Set up JDK 11
         uses: actions/setup-java@v4
         with:
@@ -167,9 +172,11 @@ jobs:
       - name: Verify artifacts exist before promotion
         run: |
           echo "🔍 Verifying artifacts exist for promotion..."
+          # Get module list from Maven POM
+          MODULES=$(mvn help:evaluate -Dexpression=project.modules -q -DforceStdout | sed 's/\[//' | sed 's/\]//' | sed 's/,//g')
           
           # Check if Docker containers exist for this version
-          for service in spring-petclinic-cloud-api-gateway spring-petclinic-cloud-visits-service spring-petclinic-cloud-vets-service spring-petclinic-cloud-customers-service spring-petclinic-cloud-admin-server spring-petclinic-cloud-discovery-service spring-petclinic-cloud-config-server; do
+          for service in ${MODULES}; do
             echo "Checking ${service}:${PROMOTION_VERSION}..."
             if jf rt search "dev-oci-local/${service}/${PROMOTION_VERSION}/*" --format=json | jq -e 'length > 0' >/dev/null; then
               echo "✅ ${service}:${PROMOTION_VERSION} found"
@@ -208,6 +215,9 @@ jobs:
       - name: Create promotion evidence
         run: |
           echo "📋 Creating promotion evidence..."
+          # Get module list from Maven POM
+          MODULES=$(mvn help:evaluate -Dexpression=project.modules -q -DforceStdout | sed 's/\[//' | sed 's/\]//' | sed 's/,//g')
+          PROMOTED_ARTIFACTS_JSON=$(for m in ${MODULES}; do echo "\"${m}:${PROMOTION_VERSION}\""; done | paste -sd, -)
           
           cat > promotion_evidence.json << EOF
           {
@@ -223,15 +233,7 @@ jobs:
                 "run_id": "${{ github.event.workflow_run.id || 'independent' }}",
                 "conclusion": "${{ github.event.workflow_run.conclusion || 'independent' }}"
               },
-              "promoted_artifacts": [
-                "spring-petclinic-cloud-api-gateway:${PROMOTION_VERSION}",
-                "spring-petclinic-cloud-visits-service:${PROMOTION_VERSION}",
-                "spring-petclinic-cloud-vets-service:${PROMOTION_VERSION}",
-                "spring-petclinic-cloud-customers-service:${PROMOTION_VERSION}",
-                "spring-petclinic-cloud-admin-server:${PROMOTION_VERSION}",
-                "spring-petclinic-cloud-discovery-service:${PROMOTION_VERSION}",
-                "spring-petclinic-cloud-config-server:${PROMOTION_VERSION}"
-              ],
+              "promoted_artifacts": [${PROMOTED_ARTIFACTS_JSON}],
               "release_bundle": "${RELEASE_BUNDLE_NAME}:${PROMOTION_VERSION}",
               "environment": "${TARGET_ENVIRONMENT}"
             }
@@ -254,14 +256,8 @@ jobs:
           - **Run ID**: ${{ github.event.workflow_run.id || 'independent' }}
           - **Conclusion**: ${{ github.event.workflow_run.conclusion || 'independent' }}
           
-          ## Promoted Artifacts
-          - ✅ spring-petclinic-cloud-api-gateway:${PROMOTION_VERSION}
-          - ✅ spring-petclinic-cloud-visits-service:${PROMOTION_VERSION}
-          - ✅ spring-petclinic-cloud-vets-service:${PROMOTION_VERSION}
-          - ✅ spring-petclinic-cloud-customers-service:${PROMOTION_VERSION}
-          - ✅ spring-petclinic-cloud-admin-server:${PROMOTION_VERSION}
-          - ✅ spring-petclinic-cloud-discovery-service:${PROMOTION_VERSION}
-          - ✅ spring-petclinic-cloud-config-server:${PROMOTION_VERSION}
+          ## Promoted Artifacts 
+          $(for m in ${MODULES}; do echo "- ✅ ${m}:${PROMOTION_VERSION}"; done)
           
           ## Release Bundle
           - **Name**: ${RELEASE_BUNDLE_NAME}
