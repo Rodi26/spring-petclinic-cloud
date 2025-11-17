@@ -64,6 +64,13 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Unified Version: $VERSION"
 
+      - name: Install ORAS CLI
+        run: |
+          curl -sSL https://github.com/oras-project/oras/releases/latest/download/oras_linux_amd64.tar.gz -o oras.tar.gz
+          tar -xzf oras.tar.gz oras
+          sudo mv oras /usr/local/bin/
+          oras version
+
       - name: Log in to OCI registry (Artifactory)
         run: |
           echo ${{ secrets.ORAS_TOKEN }} | oras login ${{ vars.OCI_REGISTRY_URL }} --username ${{ secrets.ORAS_USERNAME }} --password-stdin
