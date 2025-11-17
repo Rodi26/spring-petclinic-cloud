@@ -17,11 +17,12 @@ permissions:
 
 jobs:
 
-build:
-  uses: ./.github/workflows/build-reusable.yml
-  with:
-    jfrog_project: ${{ vars.JFROG_PROJECT }}
-  secrets: inherit
+  build:
+    name: Build
+    uses: ./.github/workflows/build-reusable.yml
+    with:
+      jfrog_project: ${{ vars.JFROG_PROJECT }}
+    secrets: inherit
 
   slsa-container-provenance:
     name: SLSA Container Provenance
