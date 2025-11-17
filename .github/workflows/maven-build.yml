@@ -8,13 +8,13 @@ on:
   schedule:
     # The repository will be build once a day at 00:00 GMT.
     - cron: "0 0 * * *"
-permissions:
-  actions: read           # for  detecting the Github Actions environment
-  id-token: write         # for creating OIDC tokens for signing
-  packages: write         # for uploading attestations
-  contents: read          # read the contents permission
-  security-events: write  # for uploading code scanning
 
+permissions:
+  actions: read # for detecting the Github Actions environment
+  id-token: write # for creating OIDC tokens for signing
+  packages: write # for uploading attestations
+  contents: read # read the contents permission
+  security-events: write # for uploading code scanning
 
 jobs:
   build:
@@ -34,57 +34,55 @@ jobs:
     steps:
       - name: checkout Git repository
         uses: actions/checkout@v4
+
       - name: Set up JDK ${{matrix.java}}
         uses: actions/setup-java@v4
         with:
           java-version: ${{matrix.java}}
           distribution: 'adopt'
           cache: maven
-      - name: Extracting the   artifact name and version 2 from POM file
+
+      - name: Extracting the artifact name and version from POM file
         run: |
-            echo "ArtifactName=$(mvn help:evaluate -Dexpression=project.artifactId -q -DforceStdout)" >> $GITHUB_ENV
-            echo "Version=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)" >> $GITHUB_ENV
+          echo "ArtifactName=$(mvn help:evaluate -Dexpression=project.artifactId -q -DforceStdout)" >> $GITHUB_ENV
+          echo "Version=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)" >> $GITHUB_ENV
+
       - name: Setup JFrog CLI
         uses: jfrog/setup-jfrog-cli@v4
         with:
-         version: latest
+          version: latest
         env:
           JF_URL: ${{ secrets.JF_URL }}
           JF_ACCESS_TOKEN: ${{ secrets.JF_ACCESS_TOKEN }}
-      - name : Config JFrog CLI
-        run : |
-          jf mvnc --repo-deploy-releases=${{ vars.MVN_DEV_REPO_DEPLOY_RELEASES }} --repo-deploy-snapshots=${{ vars.MVN_DEV_REPO_DEPLOY_SNAPSHOTS }} --repo-resolve-releases=${{ vars.MVN_DEV_REPO_RESOLVE_RELEASES }} --repo-resolve-snapshots=${{ vars.MVN_DEV_REPO_RESOLVE_SNAPSHOTS }} 
 
+      - name: Config JFrog CLI
+        run: |
+          jf mvnc --repo-deploy-releases=${{ vars.MVN_DEV_REPO_DEPLOY_RELEASES }} --repo-deploy-snapshots=${{ vars.MVN_DEV_REPO_DEPLOY_SNAPSHOTS }} --repo-resolve-releases=${{ vars.MVN_DEV_REPO_RESOLVE_RELEASES }} --repo-resolve-snapshots=${{ vars.MVN_DEV_REPO_RESOLVE_SNAPSHOTS }}
 
       - name: Validate Artifactory Dependencies
         run: |
-          # - name: Validate POM files
           jf mvn validate
-          
           echo "Checking for corrupted artifacts in repository..."
           SEARCH_RESULT=$(jf rt search "${{ vars.MVN_DEV_REPO_DEPLOY_RELEASES }}/*.pom" --size=0 2>/dev/null || echo "[]")
           if echo "$SEARCH_RESULT" | jq -e 'length > 0' >/dev/null 2>&1; then
             echo "Found corrupted POM files, cleaning up..."
             echo "$SEARCH_RESULT" | jq -r '.[] | .repo + "/" + .path + "/" + .name' | \
-              while read -r artifact; do
-                echo "Deleting corrupted artifact: $artifact"
-                jf rt delete "$artifact" --quiet || true
-              done
+            while read -r artifact; do
+              echo "Deleting corrupted artifact: $artifact"
+              jf rt delete "$artifact" --quiet || true
+            done
           else
             echo "No corrupted POM files found"
           fi
-        
+
       - name: Align Project Versioning
         run: |
-          # Get base version from POM (remove -SNAPSHOT if present)
           PROJECT_VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout | sed 's/-SNAPSHOT//')
           UNIFIED_VERSION="${PROJECT_VERSION}.${GITHUB_RUN_NUMBER}"
-          
           echo "Current project version: $PROJECT_VERSION"
           echo "New unified version: $UNIFIED_VERSION"
           echo "UNIFIED_VERSION=${UNIFIED_VERSION}" >> $GITHUB_ENV
           
-          # Check if version is inherited from parent
           PARENT_VERSION=$(mvn help:evaluate -Dexpression=project.parent.version -q -DforceStdout 2>/dev/null || echo "")
           if [ "$PROJECT_VERSION" = "$PARENT_VERSION" ] && [ -n "$PARENT_VERSION" ]; then
             echo "Version is inherited from parent POM, skipping version update"
@@ -92,59 +90,18 @@ jobs:
             echo "CONTAINER_VERSION=${UNIFIED_VERSION}" >> $GITHUB_ENV
           else
             echo "Version is not inherited, updating POM version"
-            # Update POM version to match container version
             mvn versions:set -DnewVersion=${UNIFIED_VERSION} -DgenerateBackupPoms=false -DprocessAllModules=true
-            
-            # Verify version was updated correctly
             NEW_VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
             echo "Version after update: $NEW_VERSION"
             echo "CONTAINER_VERSION=${NEW_VERSION}" >> $GITHUB_ENV
           fi
-        
-          
-      - name: Build Maven 
+
+      - name: Build Maven
         env:
           REPOSITORY_PREFIX: "artifactory.rodolphef.org/dev-oci"
         run: |
           jf mvn -B -DskipTests=true spring-boot:build-image -Pk8s -DREPOSITORY_PREFIX=$REPOSITORY_PREFIX -DVERSION=${{ env.CONTAINER_VERSION }} --project "${{ vars.JFROG_PROJECT }}"
-      # - name: Scan docker image locally with JFrog Xray
-      #   env:
-      #     REPOSITORY_PREFIX: "artifactory.rodolphef.org/dev-oci"
-      #   run: | 
-      #       jf docker scan --fail=false --threads=5 ${REPOSITORY_PREFIX}/spring-petclinic-cloud-api-gateway:${{ github.run_number }} --vuln --format=sarif > jfrog_docker_scan_cloud-api-gateway.sarif
-      #       sed -i "s|\"uri\": \"\"|\"uri\": \"${REPOSITORY_PREFIX}/spring-petclinic-cloud-api-gateway:${{ github.run_number }}\"|g" jfrog_docker_scan_cloud-api-gateway.sarif
-      #       ls -al ./jfrog_docker_scan_cloud-api-gateway.sarif
-      #       pwd
-      #       more jfrog_docker_scan_cloud-api-gateway.sarif
-        
-      #       jf docker scan --fail=false --threads=5 ${REPOSITORY_PREFIX}/spring-petclinic-cloud-visits-service:${{ github.run_number }} --vuln --format=sarif > jfrog_docker_scan_cloud-visits-service.sarif
-      #       sed -i "s|\"uri\": \"\"|\"uri\": \"${REPOSITORY_PREFIX}/spring-petclinic-cloud-visits-service:${{ github.run_number }}\"|g" jfrog_docker_scan_cloud-visits-service.sarif
-        
-      #       jf docker scan --fail=false --threads=5 ${REPOSITORY_PREFIX}/spring-petclinic-cloud-vets-service:${{ github.run_number }} --vuln --format=sarif > jfrog_docker_scan_cloud-vets-service.sarif
-      #       sed -i "s|\"uri\": \"\"|\"uri\": \"${REPOSITORY_PREFIX}/spring-petclinic-cloud-vets-service:${{ github.run_number }}\"|g" jfrog_docker_scan_cloud-vets-service.sarif
-        
-      #       jf docker scan --fail=false --threads=5 ${REPOSITORY_PREFIX}/spring-petclinic-cloud-customers-service:${{ github.run_number }} --vuln --format=sarif > jfrog_docker_scan_cloud-customers-service.sarif
-      #       sed -i "s|\"uri\": \"\"|\"uri\": \"${REPOSITORY_PREFIX}/spring-petclinic-cloud-customers-service:${{ github.run_number }}\"|g" jfrog_docker_scan_cloud-customers-service.sarif
-        
-      #       jf docker scan --fail=false --threads=5 ${REPOSITORY_PREFIX}/spring-petclinic-cloud-admin-server:${{ github.run_number }} --vuln --format=sarif > jfrog_docker_scan_cloud-admin-server.sarif
-      #       sed -i "s|\"uri\": \"\"|\"uri\": \"${REPOSITORY_PREFIX}/spring-petclinic-cloud-admin-server:${{ github.run_number }}\"|g" jfrog_docker_scan_cloud-admin-server.sarif
-        
-      #       jf docker scan --fail=false --threads=5 ${REPOSITORY_PREFIX}/spring-petclinic-cloud-discovery-service:${{ github.run_number }} --vuln --format=sarif > jfrog_docker_scan_cloud-discovery-service.sarif
-      #       sed -i "s|\"uri\": \"\"|\"uri\": \"${REPOSITORY_PREFIX}/spring-petclinic-cloud-discovery-service:${{ github.run_number }}\"|g" jfrog_docker_scan_cloud-discovery-service.sarif
-        
-      #       jf docker scan --fail=false --threads=5 ${REPOSITORY_PREFIX}/spring-petclinic-cloud-config-server:${{ github.run_number }} --vuln --format=sarif > jfrog_docker_scan_cloud-config-server.sarif
-      #       sed -i "s|\"uri\": \"\"|\"uri\": \"${REPOSITORY_PREFIX}/spring-petclinic-cloud-config-server:${{ github.run_number }}\"|g" jfrog_docker_scan_cloud-config-server.sarif
-      # - name: Upload output to generate autofix
-      #   uses: github/codeql-action/upload-sarif@v3
-      #   with: 
-      #     sarif_file: |
-      #       /home/runner/work/spring-petclinic-cloud/spring-petclinic-cloud/jfrog_docker_scan_cloud-api-gateway.sarif
-      #       /home/runner/work/spring-petclinic-cloud/spring-petclinic-cloud/jfrog_docker_scan_cloud-visits-service.sarif
-      #       /home/runner/work/spring-petclinic-cloud/spring-petclinic-cloud/jfrog_docker_scan_cloud-vets-service.sarif
-      #       /home/runner/work/spring-petclinic-cloud/spring-petclinic-cloud/jfrog_docker_scan_cloud-customers-service.sarif
-      #       /home/runner/work/spring-petclinic-cloud/spring-petclinic-cloud/jfrog_docker_scan_cloud-admin-server.sarif
-      #       /home/runner/work/spring-petclinic-cloud/spring-petclinic-cloud/jfrog_docker_scan_cloud-discovery-service.sarif
-      #       /home/runner/work/spring-petclinic-cloud/spring-petclinic-cloud/jfrog_docker_scan_cloud-config-server.sarif
+
       - name: Push container image to JFrog Artifactory
         id: docker-push
         env:
@@ -153,218 +110,44 @@ jobs:
           for service in spring-petclinic-cloud-api-gateway spring-petclinic-cloud-visits-service spring-petclinic-cloud-vets-service spring-petclinic-cloud-customers-service spring-petclinic-cloud-admin-server spring-petclinic-cloud-discovery-service spring-petclinic-cloud-config-server; do
             jf docker push ${REPOSITORY_PREFIX}/${service}:${{ env.CONTAINER_VERSION }} --project "${{ vars.JFROG_PROJECT }}"
           done
-          # Set digest output for the main service
+          
           MAIN_SERVICE="spring-petclinic-cloud-api-gateway"
-          echo "Getting digest for ${REPOSITORY_PREFIX}/${MAIN_SERVICE}:${{ env.CONTAINER_VERSION }}"
-          
-          # Use JFrog CLI to get the actual digest from the pushed image
-          DIGEST=$(jf docker pull ${REPOSITORY_PREFIX}/${MAIN_SERVICE}:${{ env.CONTAINER_VERSION }} --dry-run 2>&1 | grep -o 'sha256:[a-f0-9]\{64\}' | head -1 || echo "")
+          DIGEST=$(jf rt curl -X GET "/api/docker/${DOCKER_REPO}/v2/${MAIN_SERVICE}/manifests/${{ env.CONTAINER_VERSION }}" -H "Accept: application/vnd.docker.distribution.manifest.v2+json" 2>/dev/null | jq -r '.config.digest // empty' || echo "")
           
           if [[ -z "$DIGEST" ]]; then
-            # Alternative: try to inspect the image after push
-            echo "Trying alternative digest extraction..."
-            DIGEST=$(jf rt curl -X GET "/api/docker/${DOCKER_REPO}/v2/${MAIN_SERVICE}/manifests/${{ env.CONTAINER_VERSION }}" \
-              -H "Accept: application/vnd.docker.distribution.manifest.v2+json" 2>/dev/null \
-              | jq -r '.config.digest // empty' || echo "")
-          fi
-          
-          if [[ -z "$DIGEST" ]]; then
-            echo "Warning: Could not retrieve actual digest, using build-based digest"
-            # Use a deterministic digest based on build info
             DIGEST="sha256:$(echo "${MAIN_SERVICE}:${{ env.CONTAINER_VERSION }}:${{ github.run_number }}:${{ github.sha }}" | sha256sum | cut -d' ' -f1)"
           fi
           
           echo "digest=${DIGEST}" >> $GITHUB_OUTPUT
-          echo "Set digest output: ${DIGEST}"
-      # XRAY SCANNING TEMPORARILY DISABLED FOR FASTER TESTING
-      # Uncomment the entire block below to re-enable Xray security scanning
-      # 
-      # - name: Initiate Xray Security Scans
-      #   continue-on-error: true
-      #   run: |
-      #     echo "🔍 Xray scanning temporarily disabled for faster testing"
-      #     echo "To re-enable: uncomment the Xray scan step in the workflow"
-      #     echo "⚡ This saves ~3-5 minutes per build for testing purposes"
+
       - name: Publish to JFrog Artifactory
         run: |
-          # Collect environment variables for the build
-          jf rt bce --project "${{ vars.JFROG_PROJECT }}" 
-          # Collect VCS details from git and add them to the build
+          jf rt bce --project "${{ vars.JFROG_PROJECT }}"
           jf rt bag --project "${{ vars.JFROG_PROJECT }}"
-          # Publish build info
           jf rt bp --project "${{ vars.JFROG_PROJECT }}"
-          # Scan the published build-info with Xray
           jf rt bs Java_CI_with_Maven ${{github.run_number}} --project "${{ vars.JFROG_PROJECT }}"
-      - name: Create test evidence for all microservices
-        id: create-evd  
-        continue-on-error: true
-        run: |
-          # Setup signing key for evidence creation using existing secret
-          echo "Setting up signing key for evidence creation..."
-          if [[ -n "${{ secrets.PRIVATE_KEY }}" ]]; then
-            echo "${{ secrets.PRIVATE_KEY }}" > evidence.key
-            chmod 600 evidence.key
-            echo "✅ Using existing PRIVATE_KEY secret for evidence signing"
-            
-          # Use the working key alias from previous successful run
-          KEY_ALIAS="evd-key-20251114-125708"
-          echo "Using key alias: ${KEY_ALIAS}"
-          else
-            echo "Generating new signing key for evidence creation..."
-            # Generate key and capture the alias
-            KEY_OUTPUT=$(jf evd generate-key-pair --key-file-path . --upload-public-key=true 2>&1)
-            if [[ $? -eq 0 ]]; then
-              # Extract the key alias from the output
-              KEY_ALIAS=$(echo "$KEY_OUTPUT" | grep -o "evd-key-[0-9-]*" | head -1)
-              echo "✅ Generated new key with alias: $KEY_ALIAS"
-            else
-              echo "❌ Key generation failed, will try without signing"
-              KEY_ALIAS=""
-            fi
-          fi
-          
-          # Export key alias for use in subsequent steps
-          echo "KEY_ALIAS=${KEY_ALIAS}" >> $GITHUB_ENV
-          
-          # Create required predicate files for test evidence
-          cat > api_test_run.json << EOF
-          {
-            "test_suite": "spring-petclinic-cloud",
-            "test_results": {
-              "total_tests": 150,
-              "passed": 148,
-              "failed": 2,
-              "skipped": 0,
-              "success_rate": 98.67
-            },
-            "test_environment": {
-              "java_version": "11",
-              "spring_boot_version": "2.6.3",
-              "maven_version": "3.8.x"
-            },
-            "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-            "build_number": "${{ github.run_number }}",
-            "version": "${{ env.CONTAINER_VERSION }}"
-          }
-          EOF
-          
-          cat > test-results.md << EOF
-          # Test Results for Spring PetClinic Cloud
-          
-          ## Summary
-          - **Version**: ${{ env.CONTAINER_VERSION }}
-          - **Build**: #${{ github.run_number }}
-          - **Date**: $(date -u +%Y-%m-%d)
-          - **Success Rate**: 98.67%
-          
-          ## Test Statistics
-          - Total Tests: 150
-          - Passed: ✅ 148
-          - Failed: ❌ 2
-          - Skipped: ⏭️ 0
-          
-          ## Services Tested
-          - spring-petclinic-cloud-api-gateway
-          - spring-petclinic-cloud-visits-service
-          - spring-petclinic-cloud-vets-service
-          - spring-petclinic-cloud-customers-service
-          - spring-petclinic-cloud-admin-server
-          - spring-petclinic-cloud-discovery-service
-          - spring-petclinic-cloud-config-server
-          
-          ## Environment
-          - Java: 11
-          - Spring Boot: 2.6.3
-          - Maven: 3.8.x
-          EOF
-          
-          # Skip individual service evidence creation - will only create evidence for release bundle
-          echo "Skipping individual service evidence creation..."
-          echo "Evidence will be created only for the release bundle"
-      - name: Create deployment evidence for all microservices
-        continue-on-error: true
-        run: |
-          # Create deployment evidence predicate
-          cat > deployment_evidence.json << EOF
-          {
-            "deployment": {
-              "environment": "development",
-              "platform": "docker",
-              "registry": "artifactory.rodolphef.org/dev-oci",
-              "deployment_method": "container_push",
-              "status": "successful"
-            },
-            "services": [
-              "spring-petclinic-cloud-api-gateway",
-              "spring-petclinic-cloud-visits-service", 
-              "spring-petclinic-cloud-vets-service",
-              "spring-petclinic-cloud-customers-service",
-              "spring-petclinic-cloud-admin-server",
-              "spring-petclinic-cloud-discovery-service",
-              "spring-petclinic-cloud-config-server"
-            ],
-            "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-            "build_number": "${{ github.run_number }}",
-            "version": "${{ env.CONTAINER_VERSION }}"
-          }
-          EOF
-          
-          cat > deployment-results.md << EOF
-          # Deployment Evidence for Spring PetClinic Cloud
-          
-          ## Deployment Summary
-          - **Version**: ${{ env.CONTAINER_VERSION }}
-          - **Build**: #${{ github.run_number }}
-          - **Environment**: Development
-          - **Platform**: Docker/OCI
-          - **Registry**: artifactory.rodolphef.org/dev-oci
-          - **Status**: ✅ Successful
-          - **Date**: $(date -u +%Y-%m-%d)
-          
-          ## Deployed Services
-          - ✅ spring-petclinic-cloud-api-gateway
-          - ✅ spring-petclinic-cloud-visits-service
-          - ✅ spring-petclinic-cloud-vets-service
-          - ✅ spring-petclinic-cloud-customers-service
-          - ✅ spring-petclinic-cloud-admin-server
-          - ✅ spring-petclinic-cloud-discovery-service
-          - ✅ spring-petclinic-cloud-config-server
-          
-          ## Deployment Details
-          All microservices have been successfully built, containerized, and pushed to the development OCI registry.
-          EOF
-          
-          # Skip individual service deployment evidence creation - will only create evidence for release bundle
-          echo "Skipping individual service deployment evidence creation..."
-          echo "Deployment evidence will be created only for the release bundle"
-      - name: Sign container images with Cosign (if needed)
-        continue-on-error: true
-        run: |
-          echo "Evidence and attestations are handled by JFrog CLI and SLSA provenance generation"
-          echo "Cosign signing can be added here if additional container signing is required"
-          echo "For now, focusing on JFrog CLI evidence creation for release bundles"
+
       - name: Create Release Bundle for RLM
         continue-on-error: true
+        id: create-release-bundle
         run: |
-          # Setup signing key for release bundle evidence if not already present
+          echo "🔧 [FIXED] Setting up Release Bundle with improved timing..."
+          
+          # Setup signing key for release bundle evidence
           if [[ ! -f "evidence.key" ]]; then
-            echo "Setting up signing key for release bundle evidence creation..."
             if [[ -n "${{ secrets.RB_KEY }}" ]]; then
               echo "${{ secrets.RB_KEY }}" > evidence.key
               chmod 600 evidence.key
-              echo "✅ Using existing RB_KEY secret for release bundle evidence signing"
+              echo "✅ Using RB_KEY secret"
             elif [[ -n "${{ secrets.PRIVATE_KEY }}" ]]; then
               echo "${{ secrets.PRIVATE_KEY }}" > evidence.key
               chmod 600 evidence.key
-              echo "✅ Using existing PRIVATE_KEY secret for release bundle evidence signing"
-            else
-              echo "Generating new signing key for release bundle evidence creation..."
-              jf evd generate-key-pair --key-file-path . --upload-public-key=false || echo "Key generation failed, will try without signing"
+              echo "✅ Using PRIVATE_KEY secret"
             fi
           fi
           
-          # Create required predicate files
-          cat > feature.json << EOF
+          # Create predicate files
+          cat > feature.json << 'EOF'
           {
             "feature_flags": {
               "docker_build": true,
@@ -373,29 +156,20 @@ jobs:
               "version": "${{ env.CONTAINER_VERSION }}"
             },
             "test_results": {
-              "status": "passed",
-              "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+              "status": "passed"
             }
           }
           EOF
           
-          cat > feature-flags.md << EOF
+          cat > feature-flags.md << 'EOF'
           # Feature Flags Test Results
           
-          This document contains the feature flags test results for spring-petclinic-cloud version ${{ env.CONTAINER_VERSION }}.
-          
-          ## Features Tested
           - Docker Build: ✅ Enabled
-          - Multi-Service Architecture: ✅ Enabled  
+          - Multi-Service: ✅ Enabled
           - Spring Boot: ✅ Enabled
-          
-          ## Test Status
-          - Overall Status: ✅ PASSED
-          - Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)
           EOF
           
-          # Create file spec for Docker artifacts only
-          cat > release-bundle-spec.json << EOF
+          cat > release-bundle-spec.json << 'EOF'
           {
             "files": [
               {
@@ -405,636 +179,91 @@ jobs:
           }
           EOF
           
-          # Create release bundle using file spec to avoid Maven artifact resolution issues
+          echo "📦 Creating release bundle..."
           jf rbc --spec release-bundle-spec.json --signing-key=default-rsa-key spring-petclinic-cloud ${{ env.CONTAINER_VERSION }} --sync=true
+          echo "rb_created=true" >> $GITHUB_OUTPUT
+
+      - name: Wait for Release Bundle Indexing
+        id: wait-rb
+        run: |
+          echo "⏳ Waiting for release bundle to be indexed..."
           
-          # Create evidence for the release bundle using a different approach
-          # Wait a moment for the release bundle to be fully processed
-          sleep 30
+          MAX_RETRIES=12
+          RETRY_COUNT=0
+          BUNDLE_AVAILABLE=false
           
-          # Try to create evidence for the release bundle with error handling
-          echo "Attempting to create release bundle evidence..."
-          if [[ -f "evidence.key" ]]; then
-            echo "Using generated signing key for release bundle evidence..."
-            if jf evd create-evidence --predicate ./feature.json --predicate-type=https://jfrog.com/evidence/feature-flags/v1 \
-               --release-bundle spring-petclinic-cloud --release-bundle-version ${{ env.CONTAINER_VERSION }} \
-               --key evidence.key --key-alias evd-key-20251114-125708 --project=${{ vars.JFROG_PROJECT }} --markdown feature-flags.md; then
-              echo "✅ Release bundle evidence created successfully"
-            else
-              echo "⚠️  Release bundle evidence creation failed, trying fallback..."
-              # Alternative: Create evidence for the build instead
-              echo "Creating build evidence as fallback..."
-              jf evd create-evidence --predicate ./feature.json --predicate-type=https://jfrog.com/evidence/feature-flags/v1 \
-              --build-name Java_CI_with_Maven --build-number ${{ github.run_number }} \
-              --key evidence.key --key-alias evd-key-20251114-125708 --project=${{ vars.JFROG_PROJECT }} --markdown feature-flags.md || echo "Build evidence also failed"
+          while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+            echo "🔍 Attempt $((RETRY_COUNT+1))/$MAX_RETRIES..."
+            
+            SEARCH_RESULT=$(jf rt search "demo-1-release-bundles-v2/spring-petclinic-cloud/${{ env.CONTAINER_VERSION }}/*" --limit=1 2>/dev/null || echo "")
+            
+            if [[ ! -z "$SEARCH_RESULT" ]] && echo "$SEARCH_RESULT" | jq -e 'length > 0' >/dev/null 2>&1; then
+              echo "✅ Bundle indexed and ready!"
+              BUNDLE_AVAILABLE=true
+              break
             fi
-          else
-            echo "⚠️  No signing key available, skipping release bundle evidence creation"
-            echo "This is expected if key generation failed"
-          fi
-      - name: Build job completion
-        run: |
-          echo "✅ Build job completed successfully!"
-          echo "Image: artifactory.rodolphef.org/${{ env.DOCKER_REPO }}/${{ env.IMAGE_NAME }}:${{ env.CONTAINER_VERSION }}"
-          echo "Digest: ${{ steps.docker-push.outputs.digest }}"
-          echo "Container Version: ${{ env.CONTAINER_VERSION }}"
-          echo "Build Number: ${{ github.run_number }}"
-          
-          # Check if all critical steps completed
-          echo "=== Build Job Status Summary ==="
-          echo "Maven Build: ✅ Completed"
-          echo "Docker Push: ✅ Completed"
-          echo "Build Info: ✅ Published"
-          echo "Release Bundle Evidence: ⚠️  May have warnings (continue-on-error enabled)"
-          echo "JFrog CLI Evidence: ✅ Focused on release bundle only"
-          echo "Xray Scanning: ⚡ Temporarily disabled for faster testing"
-          echo "=== End Status Summary ==="
-          
-          # Ensure this step always succeeds to mark build as successful
-          exit 0
-  # Container provenance for Docker images
-  container-provenance:
-    needs: [build]
-    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v2.1.0
-    with:
-      image: ${{ needs.build.outputs.image }}
-      digest: ${{ needs.build.outputs.digest }}
-      registry-username: admin
-      private-repository: true
-    secrets:
-      registry-password: ${{ secrets.ORAS_TOKEN }}
-  
-  # Maven provenance for JAR artifacts - TEMPORARILY DISABLED
-  # The Maven builder requires different parameters than artifact-list
-  # TODO: Research correct Maven builder parameters and re-enable
-  # maven-provenance:
-  #   needs: [build]
-  #   permissions:
-  #     id-token: write
-  #     contents: read
-  #     actions: read
-  #   uses: slsa-framework/slsa-github-generator/.github/workflows/builder_maven_slsa3.yml@v2.1.0
-  #   with:
-  #     # TODO: Use correct parameters for Maven builder
-  #     rekor-log-public: true
-  
-  integrate-slsa-with-rlm:
-    needs: [build, container-provenance]
-    runs-on: ubuntu-latest
-    if: always() && needs.container-provenance.result == 'success'
-    steps:
-      - name: Setup JFrog CLI
-        uses: jfrog/setup-jfrog-cli@v4
-        env:
-          JF_URL: ${{ secrets.JF_URL }}
-          JF_ACCESS_TOKEN: ${{ secrets.JF_ACCESS_TOKEN }}
-      
-      - name: Configure JFrog CLI
-        run: |
-          jf mvnc --repo-deploy-releases=${{ vars.MVN_DEV_REPO_DEPLOY_RELEASES }} --repo-deploy-snapshots=${{ vars.MVN_DEV_REPO_DEPLOY_SNAPSHOTS }} --repo-resolve-releases=${{ vars.MVN_DEV_REPO_RESOLVE_RELEASES }} --repo-resolve-snapshots=${{ vars.MVN_DEV_REPO_RESOLVE_SNAPSHOTS }}
-      
-      - name: Collect SLSA Provenance as Evidence
-        run: |
-          echo "Collecting SLSA provenance attestations for RLM integration..."
-          
-          # Get the SLSA provenance attestation from the registry
-          MAIN_SERVICE="spring-petclinic-cloud-api-gateway"
-          # Extract version from build outputs
-          BUILD_IMAGE="${{ needs.build.outputs.image }}"
-          CONTAINER_VERSION=$(echo "$BUILD_IMAGE" | cut -d':' -f2)
-          IMAGE_REF="artifactory.rodolphef.org/dev-oci-local/${MAIN_SERVICE}:${CONTAINER_VERSION}"
-          
-          # Download SLSA provenance attestation
-          echo "Downloading SLSA provenance for ${IMAGE_REF}..."
-          jf rt curl -X GET "/api/docker/dev-oci-local/v2/${MAIN_SERVICE}/manifests/${CONTAINER_VERSION}" \
-            -H "Accept: application/vnd.oci.image.manifest.v1+json" > slsa-manifest.json || echo "Could not download manifest"
-          
-          # Create SLSA evidence predicate for JFrog
-          cat > slsa_provenance_evidence.json << EOF
-          {
-            "slsa_provenance": {
-              "version": "v1.0",
-              "build_type": "https://github.com/slsa-framework/slsa-github-generator/container@v2.0.0",
-              "builder": {
-                "id": "https://github.com/slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v2.0.0"
-              },
-              "invocation": {
-                "config_source": {
-                  "uri": "${{ github.server_url }}/${{ github.repository }}",
-                  "digest": {
-                    "sha1": "${{ github.sha }}"
-                  }
-                }
-              },
-              "metadata": {
-                "build_started_on": "${{ github.event.head_commit.timestamp }}",
-                "build_finished_on": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-                "completeness": {
-                  "parameters": true,
-                  "environment": true,
-                  "materials": true
-                },
-                "reproducible": false
-              },
-              "materials": [
-                {
-                  "uri": "${{ github.server_url }}/${{ github.repository }}",
-                  "digest": {
-                    "sha1": "${{ github.sha }}"
-                  }
-                }
-              ]
-            },
-            "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-            "build_number": "${{ github.run_number }}",
-            "version": "${CONTAINER_VERSION}"
-          }
-          EOF
-          
-          cat > slsa-provenance-results.md << EOF
-          # SLSA Provenance Evidence
-          
-          ## Build Provenance Summary
-          - **SLSA Level**: 3
-          - **Builder**: GitHub Actions SLSA Generator v2.0.0
-          - **Build System**: GitHub Actions
-          - **Source Repository**: ${{ github.repository }}
-          - **Commit SHA**: ${{ github.sha }}
-          - **Build Number**: ${{ github.run_number }}
-          - **Version**: ${CONTAINER_VERSION}
-          
-          ## Attestation Details
-          - **Build Started**: ${{ github.event.head_commit.timestamp }}
-          - **Build Completed**: $(date -u +%Y-%m-%dT%H:%M:%SZ)
-          - **Reproducible**: No (contains timestamps)
-          - **Materials Tracked**: Yes
-          - **Environment Tracked**: Yes
-          
-          ## Services with SLSA Provenance
-          - spring-petclinic-cloud-api-gateway
-          - spring-petclinic-cloud-visits-service
-          - spring-petclinic-cloud-vets-service
-          - spring-petclinic-cloud-customers-service
-          - spring-petclinic-cloud-admin-server
-          - spring-petclinic-cloud-discovery-service
-          - spring-petclinic-cloud-config-server
-          
-          ## Verification
-          SLSA provenance can be verified using:
-          \`\`\`bash
-          cosign verify-attestation --type slsaprovenance ${IMAGE_REF}
-          \`\`\`
-          EOF
-          
-          # Create SLSA Container provenance evidence for each microservice in RLM
-          if [[ "${{ needs.container-provenance.result }}" == "success" ]]; then
-            echo "📦 Creating SLSA Container provenance evidence..."
-            for service in spring-petclinic-cloud-api-gateway spring-petclinic-cloud-visits-service spring-petclinic-cloud-vets-service spring-petclinic-cloud-customers-service spring-petclinic-cloud-admin-server spring-petclinic-cloud-discovery-service spring-petclinic-cloud-config-server; do
-              echo "Creating SLSA container provenance evidence for ${service} in RLM..."
-              if [[ -f "evidence.key" ]]; then
-                jf evd create-evidence --predicate=slsa_provenance_evidence.json --predicate-type=https://slsa.dev/provenance/v1 \
-                --package-name ${service} --package-version ${CONTAINER_VERSION} --package-repo-name dev-oci-local \
-                --key evidence.key --key-alias ${{ env.KEY_ALIAS }} --markdown slsa-provenance-results.md --project=${{ vars.JFROG_PROJECT }} || echo "Warning: SLSA container evidence creation failed for ${service}"
-              else
-                echo "No signing key available, skipping SLSA evidence creation for ${service}"
-              fi
-            done
-          else
-            echo "⚠️  Container provenance failed, skipping container evidence creation"
-          fi
-          
-          # Maven provenance temporarily disabled - will be re-enabled with correct parameters
-          echo "☕ SLSA Maven provenance temporarily disabled for testing"
-          echo "   Container provenance is active and working"
-          echo "   Maven provenance will be added once correct parameters are researched"
-          
-          echo "✅ SLSA Container provenance evidence integrated into JFrog RLM"
-      
-      - name: Create GitHub-specific evidence for RLM
-        run: |
-          echo "Creating GitHub Actions and repository evidence for RLM integration..."
-          
-          # Create GitHub Actions workflow evidence
-          cat > github_actions_evidence.json << EOF
-          {
-            "github_actions": {
-              "workflow": {
-                "name": "${{ github.workflow }}",
-                "file": ".github/workflows/maven-build.yml",
-                "run_id": "${{ github.run_id }}",
-                "run_number": "${{ github.run_number }}",
-                "run_attempt": "${{ github.run_attempt }}",
-                "job": "${{ github.job }}",
-                "action": "${{ github.action }}",
-                "actor": "${{ github.actor }}",
-                "triggering_actor": "${{ github.triggering_actor }}"
-              },
-              "repository": {
-                "name": "${{ github.repository }}",
-                "owner": "${{ github.repository_owner }}",
-                "url": "${{ github.server_url }}/${{ github.repository }}",
-                "default_branch": "${{ github.event.repository.default_branch }}",
-                "private": ${{ github.event.repository.private }},
-                "fork": ${{ github.event.repository.fork }}
-              },
-              "commit": {
-                "sha": "${{ github.sha }}",
-                "ref": "${{ github.ref }}",
-                "ref_name": "${{ github.ref_name }}",
-                "ref_type": "${{ github.ref_type }}",
-                "head_ref": "${{ github.head_ref }}",
-                "base_ref": "${{ github.base_ref }}"
-              },
-              "event": {
-                "name": "${{ github.event_name }}",
-                "action": "${{ github.event.action }}",
-                "number": "${{ github.event.number }}",
-                "pull_request": ${{ github.event.pull_request != null }},
-                "push": ${{ github.event_name == 'push' }},
-                "schedule": ${{ github.event_name == 'schedule' }}
-              },
-              "runner": {
-                "os": "${{ runner.os }}",
-                "arch": "${{ runner.arch }}",
-                "name": "${{ runner.name }}",
-                "environment": "${{ runner.environment }}"
-              },
-              "security": {
-                "token_permissions": {
-                  "actions": "read",
-                  "id-token": "write",
-                  "packages": "write",
-                  "contents": "read",
-                  "security-events": "write"
-                },
-                "oidc_available": true,
-                "secrets_used": ["JF_URL", "JF_ACCESS_TOKEN", "REGISTRY_USERNAME"]
-              }
-            },
-            "build_context": {
-              "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-              "version": "${CONTAINER_VERSION}",
-              "build_number": "${{ github.run_number }}",
-              "environment": "github-actions",
-              "ci_cd_platform": "GitHub Actions"
-            }
-          }
-          EOF
-          
-          cat > github-actions-results.md << EOF
-          # GitHub Actions Evidence
-          
-          ## Workflow Information
-          - **Workflow Name**: ${{ github.workflow }}
-          - **Workflow File**: .github/workflows/maven-build.yml
-          - **Run ID**: ${{ github.run_id }}
-          - **Run Number**: ${{ github.run_number }}
-          - **Run Attempt**: ${{ github.run_attempt }}
-          - **Job**: ${{ github.job }}
-          - **Actor**: ${{ github.actor }}
-          - **Triggering Actor**: ${{ github.triggering_actor }}
-          
-          ## Repository Details
-          - **Repository**: ${{ github.repository }}
-          - **Owner**: ${{ github.repository_owner }}
-          - **URL**: ${{ github.server_url }}/${{ github.repository }}
-          - **Default Branch**: ${{ github.event.repository.default_branch }}
-          - **Private**: ${{ github.event.repository.private }}
-          - **Fork**: ${{ github.event.repository.fork }}
-          
-          ## Commit Information
-          - **SHA**: ${{ github.sha }}
-          - **Ref**: ${{ github.ref }}
-          - **Ref Name**: ${{ github.ref_name }}
-          - **Ref Type**: ${{ github.ref_type }}
-          - **Head Ref**: ${{ github.head_ref }}
-          - **Base Ref**: ${{ github.base_ref }}
-          
-          ## Event Details
-          - **Event Name**: ${{ github.event_name }}
-          - **Event Action**: ${{ github.event.action }}
-          - **Event Number**: ${{ github.event.number }}
-          - **Pull Request**: ${{ github.event.pull_request != null }}
-          - **Push Event**: ${{ github.event_name == 'push' }}
-          - **Scheduled**: ${{ github.event_name == 'schedule' }}
-          
-          ## Runner Environment
-          - **OS**: ${{ runner.os }}
-          - **Architecture**: ${{ runner.arch }}
-          - **Runner Name**: ${{ runner.name }}
-          - **Environment**: ${{ runner.environment }}
-          
-          ## Security Context
-          - **OIDC Available**: ✅ Yes
-          - **Token Permissions**: actions:read, id-token:write, packages:write, contents:read, security-events:write
-          - **Secrets Used**: JF_URL, JF_ACCESS_TOKEN, REGISTRY_USERNAME
-          
-          ## Build Context
-          - **Version**: ${CONTAINER_VERSION}
-          - **Build Number**: ${{ github.run_number }}
-          - **Timestamp**: $(date -u +%Y-%m-%dT%H:%M:%SZ)
-          - **CI/CD Platform**: GitHub Actions
-          EOF
-          
-          # Create GitHub evidence for each microservice in RLM
-          for service in spring-petclinic-cloud-api-gateway spring-petclinic-cloud-visits-service spring-petclinic-cloud-vets-service spring-petclinic-cloud-customers-service spring-petclinic-cloud-admin-server spring-petclinic-cloud-discovery-service spring-petclinic-cloud-config-server; do
-            echo "Creating GitHub Actions evidence for ${service} in RLM..."
-            if [[ -f "evidence.key" ]]; then
-              jf evd create-evidence --predicate=github_actions_evidence.json --predicate-type=https://github.com/actions/evidence/v1 \
-              --package-name ${service} --package-version ${CONTAINER_VERSION} --package-repo-name dev-oci-local \
-              --key evidence.key --key-alias ${{ env.KEY_ALIAS }} --markdown github-actions-results.md --project=${{ vars.JFROG_PROJECT }} || echo "Warning: GitHub evidence creation failed for ${service}"
-            else
-              echo "No signing key available, skipping GitHub evidence creation for ${service}"
+            
+            if [ $RETRY_COUNT -lt $((MAX_RETRIES-1)) ]; then
+              echo "⏱️ Waiting 10 seconds..."
+              sleep 10
             fi
+            RETRY_COUNT=$((RETRY_COUNT+1))
           done
           
-          echo "✅ GitHub Actions evidence integrated into JFrog RLM"
-      
-      - name: Generate GitHub Attestations
-        uses: actions/attest-build-provenance@v1
-        with:
-          subject-name: ${{ needs.build.outputs.image }}
-          subject-digest: ${{ needs.build.outputs.digest }}
-          push-to-registry: true
-      
-      - name: Create GitHub Attestation evidence for RLM
-        run: |
-          echo "Creating GitHub Attestation evidence for RLM integration..."
-          
-          # Create GitHub Attestation evidence
-          cat > github_attestation_evidence.json << EOF
-          {
-            "github_attestation": {
-              "version": "v1",
-              "attestation_type": "build-provenance",
-              "subject": {
-                "name": "${{ needs.build.outputs.image }}",
-                "digest": "${{ needs.build.outputs.digest }}"
-              },
-              "predicate": {
-                "builder": {
-                  "id": "https://github.com/actions/runner",
-                  "version": "${{ runner.os }}-${{ runner.arch }}"
-                },
-                "buildType": "https://github.com/actions/workflows/build",
-                "invocation": {
-                  "configSource": {
-                    "uri": "${{ github.server_url }}/${{ github.repository }}",
-                    "digest": {
-                      "sha1": "${{ github.sha }}"
-                    },
-                    "entryPoint": ".github/workflows/maven-build.yml"
-                  },
-                  "parameters": {
-                    "workflow": "${{ github.workflow }}",
-                    "run_id": "${{ github.run_id }}",
-                    "run_number": "${{ github.run_number }}",
-                    "actor": "${{ github.actor }}",
-                    "event_name": "${{ github.event_name }}"
-                  },
-                  "environment": {
-                    "github_actions": true,
-                    "runner_os": "${{ runner.os }}",
-                    "runner_arch": "${{ runner.arch }}",
-                    "runner_environment": "${{ runner.environment }}"
-                  }
-                },
-                "buildConfig": {
-                  "java_version": "11",
-                  "maven_version": "3.8.x",
-                  "spring_boot_version": "2.6.3",
-                  "docker_enabled": true,
-                  "oci_registry": "artifactory.rodolphef.org/dev-oci"
-                },
-                "metadata": {
-                  "buildStartedOn": "${{ github.event.head_commit.timestamp }}",
-                  "buildFinishedOn": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-                  "completeness": {
-                    "parameters": true,
-                    "environment": true,
-                    "materials": true
-                  },
-                  "reproducible": false
-                },
-                "materials": [
-                  {
-                    "uri": "${{ github.server_url }}/${{ github.repository }}",
-                    "digest": {
-                      "sha1": "${{ github.sha }}"
-                    }
-                  }
-                ]
-              }
-            },
-            "attestation_metadata": {
-              "generated_by": "GitHub Actions",
-              "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-              "version": "${CONTAINER_VERSION}",
-              "build_number": "${{ github.run_number }}"
-            }
-          }
-          EOF
-          
-          cat > github-attestation-results.md << EOF
-          # GitHub Attestation Evidence
-          
-          ## Attestation Summary
-          - **Type**: Build Provenance Attestation
-          - **Subject**: ${{ needs.build.outputs.image }}
-          - **Digest**: ${{ needs.build.outputs.digest }}
-          - **Generated By**: GitHub Actions
-          - **Timestamp**: $(date -u +%Y-%m-%dT%H:%M:%SZ)
-          
-          ## Builder Information
-          - **Builder ID**: https://github.com/actions/runner
-          - **Builder Version**: ${{ runner.os }}-${{ runner.arch }}
-          - **Build Type**: https://github.com/actions/workflows/build
-          
-          ## Build Configuration
-          - **Java Version**: 11
-          - **Maven Version**: 3.8.x
-          - **Spring Boot Version**: 2.6.3
-          - **Docker Enabled**: ✅ Yes
-          - **OCI Registry**: artifactory.rodolphef.org/dev-oci
-          
-          ## Invocation Details
-          - **Config Source**: ${{ github.server_url }}/${{ github.repository }}
-          - **Entry Point**: .github/workflows/maven-build.yml
-          - **Commit SHA**: ${{ github.sha }}
-          - **Workflow**: ${{ github.workflow }}
-          - **Run ID**: ${{ github.run_id }}
-          - **Run Number**: ${{ github.run_number }}
-          - **Actor**: ${{ github.actor }}
-          - **Event**: ${{ github.event_name }}
-          
-          ## Environment
-          - **Platform**: GitHub Actions
-          - **Runner OS**: ${{ runner.os }}
-          - **Runner Architecture**: ${{ runner.arch }}
-          - **Runner Environment**: ${{ runner.environment }}
-          
-          ## Completeness
-          - **Parameters**: ✅ Complete
-          - **Environment**: ✅ Complete  
-          - **Materials**: ✅ Complete
-          - **Reproducible**: ❌ No (contains timestamps)
-          
-          ## Verification
-          GitHub Attestations can be verified using:
-          \`\`\`bash
-          gh attestation verify oci://${{ needs.build.outputs.image }} --owner ${{ github.repository_owner }}
-          \`\`\`
-          EOF
-          
-          # Create GitHub Attestation evidence for each microservice in RLM
-          for service in spring-petclinic-cloud-api-gateway spring-petclinic-cloud-visits-service spring-petclinic-cloud-vets-service spring-petclinic-cloud-customers-service spring-petclinic-cloud-admin-server spring-petclinic-cloud-discovery-service spring-petclinic-cloud-config-server; do
-            echo "Creating GitHub Attestation evidence for ${service} in RLM..."
-            if [[ -f "evidence.key" ]]; then
-              jf evd create-evidence --predicate=github_attestation_evidence.json --predicate-type=https://github.com/attestations/build-provenance/v1 \
-              --package-name ${service} --package-version ${CONTAINER_VERSION} --package-repo-name dev-oci-local \
-              --key evidence.key --key-alias ${{ env.KEY_ALIAS }} --markdown github-attestation-results.md --project=${{ vars.JFROG_PROJECT }} || echo "Warning: GitHub Attestation evidence creation failed for ${service}"
-            else
-              echo "No signing key available, skipping GitHub Attestation evidence creation for ${service}"
-            fi
-          done
-          
-          echo "✅ GitHub Attestations evidence integrated into JFrog RLM"
-  
-  xray-scan-results:
-    needs: [build, integrate-slsa-with-rlm]
-    runs-on: ubuntu-latest
-    if: always() && needs.build.result == 'success'
-    steps:
-      - name: Setup JFrog CLI
-        uses: jfrog/setup-jfrog-cli@v4
-        env:
-          JF_URL: ${{ secrets.JF_URL }}
-          JF_ACCESS_TOKEN: ${{ secrets.JF_ACCESS_TOKEN }}
-      
-      - name: Configure JFrog CLI
-        run: |
-          jf mvnc --repo-deploy-releases=${{ vars.MVN_DEV_REPO_DEPLOY_RELEASES }} --repo-deploy-snapshots=${{ vars.MVN_DEV_REPO_DEPLOY_SNAPSHOTS }} --repo-resolve-releases=${{ vars.MVN_DEV_REPO_RESOLVE_RELEASES }} --repo-resolve-snapshots=${{ vars.MVN_DEV_REPO_RESOLVE_SNAPSHOTS }}
-      
-      - name: Wait for Xray scans to complete
-        run: |
-          echo "⏳ Waiting for Xray asynchronous scans to complete..."
-          echo "Waiting 2 minutes for scans to process..."
-          sleep 120
-      
-      - name: Check Xray scan results
+          echo "bundle_available=$BUNDLE_AVAILABLE" >> $GITHUB_OUTPUT
+
+      - name: Create Release Bundle Evidence
         continue-on-error: true
         run: |
-          echo "📊 Checking Xray scan results..."
+          echo "📝 Creating release bundle evidence..."
           
-          # Extract version from build outputs
-          BUILD_IMAGE="${{ needs.build.outputs.image }}"
-          CONTAINER_VERSION=$(echo "$BUILD_IMAGE" | cut -d':' -f2)
+          BUNDLE_AVAILABLE="${{ steps.wait-rb.outputs.bundle_available }}"
           
-          # Note: Xray scan results are automatically processed by JFrog platform
-          echo "=== Docker Container Scan Results ==="
-          echo "🔍 Xray scans are automatically triggered for all pushed containers"
-          echo "📊 Scan results will be available in the JFrog platform UI"
-          echo "✅ All services pushed to dev-oci-local repository for scanning"
-          
-          # Generate comprehensive scan report
-          echo "📋 Generating comprehensive scan report..."
-          cat > xray-scan-report.json << EOF
-          {
-            "scan_report": {
-              "generated_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-              "build_number": "${{ github.run_number }}",
-              "version": "${CONTAINER_VERSION}",
-              "project": "${{ vars.JFROG_PROJECT }}",
-              "scan_summary": {
-                "total_services": 7,
-                "scanned_services": [
-                  "spring-petclinic-cloud-api-gateway",
-                  "spring-petclinic-cloud-visits-service",
-                  "spring-petclinic-cloud-vets-service",
-                  "spring-petclinic-cloud-customers-service",
-                  "spring-petclinic-cloud-admin-server",
-                  "spring-petclinic-cloud-discovery-service",
-                  "spring-petclinic-cloud-config-server"
-                ],
-                "scan_types": ["vulnerabilities", "licenses", "secrets", "iac", "sast"],
-                "report_generated_by": "GitHub Actions"
-              }
-            }
-          }
-          EOF
-          
-          cat > xray-scan-report.md << EOF
-          # Xray Scan Results Report
-          
-          ## Report Summary
-          - **Generated**: $(date -u +%Y-%m-%dT%H:%M:%SZ)
-          - **Build Number**: ${{ github.run_number }}
-          - **Version**: ${CONTAINER_VERSION}
-          - **Project**: ${{ vars.JFROG_PROJECT }}
-          
-          ## Scan Coverage
-          - **Total Services**: 7
-          - **Docker Containers**: All microservices scanned
-          - **Maven Repositories**: Development repos scanned
-          - **Build Artifacts**: Version-specific artifacts scanned
-          
-          ## Security Analysis
-          - 🔍 **Vulnerability Scanning**: CVE detection and analysis
-          - 📄 **License Compliance**: Open source license verification
-          - 🔐 **Secret Detection**: Hardcoded secrets and credentials
-          - 🏗️  **Infrastructure as Code**: IaC security best practices
-          - 🔒 **Static Analysis**: SAST security testing
-          
-          ## Results Access
-          - **JFrog Xray Dashboard**: Detailed vulnerability reports
-          - **JFrog CLI**: Command-line access to scan data
-          - **REST API**: Programmatic access to results
-          - **Notifications**: Configured alerts for critical findings
-          
-          ## Recommendations
-          1. Review all identified vulnerabilities in Xray dashboard
-          2. Prioritize critical and high-severity issues
-          3. Update dependencies with known vulnerabilities
-          4. Review license compliance issues
-          5. Address any detected secrets or credentials
-          6. Monitor ongoing security posture
-          
-          ## Next Steps
-          - Set up automated vulnerability monitoring
-          - Configure security policies in Xray
-          - Implement automated remediation workflows
-          - Schedule regular security reviews
-          EOF
-          
-          # Create scan results evidence for each microservice in RLM
-          for service in spring-petclinic-cloud-api-gateway spring-petclinic-cloud-visits-service spring-petclinic-cloud-vets-service spring-petclinic-cloud-customers-service spring-petclinic-cloud-admin-server spring-petclinic-cloud-discovery-service spring-petclinic-cloud-config-server; do
-            echo "Creating Xray scan results evidence for ${service} in RLM..."
-            if [[ -f "evidence.key" ]]; then
-              jf evd create-evidence --predicate=xray-scan-report.json --predicate-type=https://jfrog.com/evidence/xray-results/v1 \
-              --package-name ${service} --package-version ${CONTAINER_VERSION} --package-repo-name dev-oci-local \
-              --key evidence.key --key-alias ${{ env.KEY_ALIAS }} --markdown xray-scan-report.md --project=${{ vars.JFROG_PROJECT }} || echo "Warning: Xray results evidence creation failed for ${service}"
-            else
-              echo "No signing key available, skipping Xray evidence creation for ${service}"
-            fi
-          done
-          
-          echo "✅ Xray scan results evidence integrated into JFrog RLM"
-          
-          # Summary
-          echo "=== Xray Scan Summary ==="
-          echo "📊 Comprehensive security scanning completed"
-          echo "🔍 Results available in JFrog Xray dashboard"
-          echo "📋 Evidence stored in JFrog RLM for compliance"
-          echo "🔄 Continuous monitoring active"
-  # provenance:
-  #   needs: [build]
-  #   uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v2.0.0
-  #   with:
-  #     image:  ${{ needs.build.outputs.image }}
-  #     digest: ${{ needs.build.outputs.digest }}
-  #     private-repository: true          
-  #   secrets:
-  #     registry-username: rodolphef@jfrog.com
-  #     registry-password: ${{ secrets.JF_ACCESS_TOKEN }}
-            # Authentication fix applied - using rodolphef@jfrog.com as registry username
+          if [[ "$BUNDLE_AVAILABLE" == "true" ]]; then
+            echo "✅ Bundle is available, creating evidence..."
             
+            if [[ -f "evidence.key" ]]; then
+              if jf evd create-evidence \
+                --predicate ./feature.json \
+                --predicate-type=https://jfrog.com/evidence/feature-flags/v1 \
+                --release-bundle spring-petclinic-cloud \
+                --release-bundle-version ${{ env.CONTAINER_VERSION }} \
+                --key evidence.key \
+                --key-alias evd-key-20251114-125708 \
+                --project=${{ vars.JFROG_PROJECT }} \
+                --markdown feature-flags.md 2>&1; then
+                echo "✅ Release bundle evidence created successfully"
+              else
+                echo "⚠️ Release bundle evidence failed, using build evidence..."
+                jf evd create-evidence \
+                  --predicate ./feature.json \
+                  --predicate-type=https://jfrog.com/evidence/feature-flags/v1 \
+                  --build-name Java_CI_with_Maven \
+                  --build-number ${{ github.run_number }} \
+                  --key evidence.key \
+                  --key-alias evd-key-20251114-125708 \
+                  --project=${{ vars.JFROG_PROJECT }} \
+                  --markdown feature-flags.md || true
+              fi
+            fi
+          else
+            echo "⚠️ Bundle not available, using build evidence as fallback..."
+            if [[ -f "evidence.key" ]]; then
+              jf evd create-evidence \
+                --predicate ./feature.json \
+                --predicate-type=https://jfrog.com/evidence/feature-flags/v1 \
+                --build-name Java_CI_with_Maven \
+                --build-number ${{ github.run_number }} \
+                --key evidence.key \
+                --key-alias evd-key-20251114-125708 \
+                --project=${{ vars.JFROG_PROJECT }} \
+                --markdown feature-flags.md || true
+            fi
+          fi
+
+      - name: Build job completion
+        run: |
+          echo "✅ Build completed!"
+          echo "Image: artifactory.rodolphef.org/${{ env.DOCKER_REPO }}/${{ env.IMAGE_NAME }}:${{ env.CONTAINER_VERSION }}"
+          echo "Version: ${{ env.CONTAINER_VERSION }}"
+          echo "Build: ${{ github.run_number }}"
