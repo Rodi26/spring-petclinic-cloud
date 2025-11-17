@@ -216,7 +216,7 @@ jobs:
                 --key "${{ secrets.PRIVATE_KEY }}" \
                 --key-alias ${{ secrets.KEY_ALIAS }}  \
                 --project=${{ vars.JFROG_PROJECT }} \
-                --markdown feature-flags.md 2>&1; then
+                --markdown feature-flags.md 2>&1; 
              
 
       - name: Build job completion
