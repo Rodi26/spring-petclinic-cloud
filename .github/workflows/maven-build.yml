@@ -170,7 +170,7 @@ jobs:
           EOF
           
           echo "📦 Creating release bundle..."
-          jf rbc --spec release-bundle-spec.json --signing-key=default-rsa-key spring-petclinic-cloud ${{ env.CONTAINER_VERSION }} --sync=true
+          jf rbc --spec release-bundle-spec.json --signing-key=default-rsa-key spring-petclinic-cloud ${{ env.CONTAINER_VERSION }} --sync=true  --project=${{ vars.JFROG_PROJECT }}
           echo "rb_created=true" >> $GITHUB_OUTPUT
 
       - name: Wait for Release Bundle Indexing
