@@ -410,7 +410,7 @@ jobs:
           
           # Create evidence for the release bundle using a different approach
           # Wait a moment for the release bundle to be fully processed
-          sleep 5
+          sleep 30
           
           # Try to create evidence for the release bundle with error handling
           echo "Attempting to create release bundle evidence..."

@@ -269,18 +269,14 @@ jobs:
           - **Status**: ✅ Created and Signed
           
           ## Next Steps
-          - Deploy to production environment
-          - Monitor application performance
-          - Verify all services are healthy
+          - The release bundle is now ready for distribution to the `${TARGET_ENVIRONMENT}` environment.
           EOF
           
-          # Create promotion evidence for each microservice
-          for service in spring-petclinic-cloud-api-gateway spring-petclinic-cloud-visits-service spring-petclinic-cloud-vets-service spring-petclinic-cloud-customers-service spring-petclinic-cloud-admin-server spring-petclinic-cloud-discovery-service spring-petclinic-cloud-config-server; do
-            echo "Creating promotion evidence for ${service}..."
-            jf evd create --predicate=promotion_evidence.json --predicate-type=https://jfrog.com/evidence/promotion/v1 \
-            --package-name ${service} --package-version ${PROMOTION_VERSION} --package-repo-name dev-oci-local \
-            --markdown promotion-results.md --project=${{ vars.JFROG_PROJECT }} || echo "Warning: Promotion evidence creation failed for ${service}"
-          done
+          # Create promotion evidence for the release bundle
+          echo "Creating promotion evidence for release bundle ${RELEASE_BUNDLE_NAME}:${PROMOTION_VERSION}..."
+          jf evd create --predicate=promotion_evidence.json --predicate-type=https://jfrog.com/evidence/promotion/v1 \
+            --rb-name=${RELEASE_BUNDLE_NAME} --rb-version=${PROMOTION_VERSION} \
+            --markdown promotion-results.md --project=${{ vars.JFROG_PROJECT }}
           
           echo "✅ Promotion completed successfully!"
           echo "🚀 Release bundle ${RELEASE_BUNDLE_NAME}:${PROMOTION_VERSION} is ready for deployment"
