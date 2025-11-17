@@ -109,7 +109,7 @@ jobs:
 
       - name: Collect Build-info
         run: |
-          jf rt bce --project="${JFROG_PROJECT}"
-          jf rt bag --project="${JFROG_PROJECT}"
-          jf build-scan --build-name="${{ github.workflow }}" --build-number="${{ github.run_number }}" --project="${JFROG_PROJECT}"
-          jf rt bs "${{ github.workflow }}" "${{ github.run_number }}" --project="${JFROG_PROJECT}"
+          jf rt bce --project "${{ vars.JFROG_PROJECT }}"
+          jf rt bag --project "${{ vars.JFROG_PROJECT }}"
+          jf rt bp --project "${{ vars.JFROG_PROJECT }}"
+          jf rt bs Java_CI_with_Maven ${{github.run_number}} --project "${{ vars.JFROG_PROJECT }}"
