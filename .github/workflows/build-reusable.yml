@@ -66,8 +66,10 @@ jobs:
 
       - name: Install ORAS CLI
         run: |
-          curl -sSL https://github.com/oras-project/oras/releases/latest/download/oras_linux_amd64.tar.gz -o oras.tar.gz
-          tar -xzf oras.tar.gz oras
+          VERSION=$(curl -s https://api.github.com/repos/oras-project/oras/releases/latest | jq -r ".tag_name")
+          ARCHIVE="oras_${VERSION#v}_linux_amd64.tar.gz"
+          curl -sSL "https://github.com/oras-project/oras/releases/download/${VERSION}/${ARCHIVE}" -o "${ARCHIVE}"
+          tar -xzf "${ARCHIVE}"
           sudo mv oras /usr/local/bin/
           oras version
 
