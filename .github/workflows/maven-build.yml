@@ -205,7 +205,7 @@ jobs:
       - name: Create Release Bundle Evidence
         continue-on-error: true
         run: |
-          echo "📝 Creating release bundle evidence..."
+          echo "📝 Creating release bundle evidence...  "
           
           BUNDLE_AVAILABLE="${{ steps.wait-rb.outputs.bundle_available }}"
           jf evd create-evidence \

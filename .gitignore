@@ -35,3 +35,5 @@ public.pem
 signing-key.pem
 public.pem
 public.pem
+evidence
+evidence.pub
