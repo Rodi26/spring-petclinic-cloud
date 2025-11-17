@@ -110,6 +110,6 @@ jobs:
       - name: Collect Build-info
         run: |
           jf rt bce --project="${JFROG_PROJECT}"
-          jf rt bag
+          jf rt bag --project="${JFROG_PROJECT}"
           jf build-scan --build-name="${{ github.workflow }}" --build-number="${{ github.run_number }}" --project="${JFROG_PROJECT}"
           jf rt bs "${{ github.workflow }}" "${{ github.run_number }}" --project="${JFROG_PROJECT}"
