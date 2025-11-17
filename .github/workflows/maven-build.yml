@@ -1,4 +1,4 @@
-name: Java CI with Maven (Modular Orchestrator )
+name: Java CI with Maven (Modular Orchestrator)
 
 on:
   push:
