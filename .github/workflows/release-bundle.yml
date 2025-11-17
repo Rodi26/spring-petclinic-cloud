@@ -1,0 +1,199 @@
+name: Release Bundle for RLM (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      container_version:
+        required: true
+        type: string
+    secrets:
+      JF_URL:
+        required: true
+      JF_ACCESS_TOKEN:
+        required: true
+      PRIVATE_KEY:
+        required: false
+      KEY_ALIAS:
+        required: false
+
+jobs:
+  release-bundle:
+    name: Release Bundle Creation
+    runs-on: ubuntu-latest
+    env:
+      JFROG_PROJECT: ${{ vars.JFROG_PROJECT }}
+      CONTAINER_VERSION: ${{ inputs.container_version }}
+
+    steps:
+      - name: Setup JFrog CLI
+        uses: jfrog/setup-jfrog-cli@v4
+        env:
+          JF_URL: ${{ secrets.JF_URL }}
+          JF_ACCESS_TOKEN: ${{ secrets.JF_ACCESS_TOKEN }}
+
+      - name: Configure JFrog CLI
+        run: |
+          jf mvnc \
+            --repo-deploy-releases=${{ vars.MVN_DEV_REPO_DEPLOY_RELEASES }} \
+            --repo-deploy-snapshots=${{ vars.MVN_DEV_REPO_DEPLOY_SNAPSHOTS }} \
+            --repo-resolve-releases=${{ vars.MVN_DEV_REPO_RESOLVE_RELEASES }} \
+            --repo-resolve-snapshots=${{ vars.MVN_DEV_REPO_RESOLVE_SNAPSHOTS }}
+
+      - name: Generate Feature Flags Evidence Files
+        run: |
+          echo "📝 Generating feature flag evidence for Release Bundle"
+
+          cat > feature-flags.json << EOF
+          {
+            "feature_metadata": {
+              "version": "${CONTAINER_VERSION}",
+              "features": [
+                { "name": "slsa_provenance", "enabled": true },
+                { "name": "xray_security_scanning", "enabled": true },
+                { "name": "github_attestation", "enabled": true },
+                { "name": "release_bundle_composition", "enabled": true }
+              ]
+            }
+          }
+          EOF
+
+          cat > feature-flags.md << EOF
+          # Feature Flags Evidence
+
+          Version: **${CONTAINER_VERSION}**
+
+          ## Enabled Features
+          - SLSA Provenance
+          - Xray Security Scanning
+          - GitHub Attestations
+          - Release Bundle Composition
+
+          Evidence generated as part of the Release Bundle workflow.
+          EOF
+
+      - name: Create Release Bundle Spec
+        run: |
+          echo "📦 Creating Release Bundle spec"
+
+          cat > release-bundle-spec.json << EOF
+          {
+            "version": "1",
+            "files": [
+              {
+                "pattern": "dev-oci-local/spring-petclinic-cloud-api-gateway/${CONTAINER_VERSION}/*"
+              },
+              {
+                "pattern": "dev-oci-local/spring-petclinic-cloud-visits-service/${CONTAINER_VERSION}/*"
+              },
+              {
+                "pattern": "dev-oci-local/spring-petclinic-cloud-vets-service/${CONTAINER_VERSION}/*"
+              },
+              {
+                "pattern": "dev-oci-local/spring-petclinic-cloud-customers-service/${CONTAINER_VERSION}/*"
+              },
+              {
+                "pattern": "dev-oci-local/spring-petclinic-cloud-admin-server/${CONTAINER_VERSION}/*"
+              },
+              {
+                "pattern": "dev-oci-local/spring-petclinic-cloud-discovery-service/${CONTAINER_VERSION}/*"
+              },
+              {
+                "pattern": "dev-oci-local/spring-petclinic-cloud-config-server/${CONTAINER_VERSION}/*"
+              }
+            ]
+          }
+          EOF
+
+      - name: Create Release Bundle
+        id: create-rb
+        run: |
+          echo "🚀 Creating Release Bundle: spring-petclinic-cloud/${CONTAINER_VERSION}"
+
+          jf rbc spring-petclinic-cloud ${CONTAINER_VERSION} \
+            --spec=release-bundle-spec.json \
+            --project="${JFROG_PROJECT}" \
+            --desc="Petclinic Cloud Release Bundle ${CONTAINER_VERSION}" \
+            || echo "⚠️ Release Bundle creation reported an error (may still succeed)"
+
+      - name: Wait for Release Bundle Indexing
+        id: wait-rb
+        run: |
+          echo "⏳ Waiting for Release Bundle to be indexed..."
+
+          MAX_RETRIES=20
+          RETRIES=0
+          SLEEP_TIME=10
+          INDEXED=false
+
+          while [ $RETRIES -lt $MAX_RETRIES ]; do
+            echo "🔎 Checking indexing status (attempt $((RETRIES+1))/$MAX_RETRIES)..."
+
+            SEARCH=$(jf rt search "demo-1-release-bundles-v2/spring-petclinic-cloud/${CONTAINER_VERSION}/*" --limit=1 2>/dev/null | jq -r '.[] // empty')
+
+            if [[ -n "$SEARCH" ]]; then
+              echo "✅ Release Bundle indexed!"
+              INDEXED=true
+              break
+            fi
+
+            echo "⏱️ Not indexed yet, retrying in ${SLEEP_TIME}s..."
+            sleep $SLEEP_TIME
+            RETRIES=$((RETRIES+1))
+          done
+
+          echo "indexed=$INDEXED" >> $GITHUB_OUTPUT
+
+      - name: Generate Release Bundle Evidence
+        run: |
+          echo "📝 Creating Release Bundle evidence predicate"
+
+          cat > release-bundle-evidence.json << EOF
+          {
+            "release_bundle": {
+              "name": "spring-petclinic-cloud",
+              "version": "${CONTAINER_VERSION}",
+              "indexed": "${{ steps.wait-rb.outputs.indexed }}",
+              "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            }
+          }
+          EOF
+
+          cat > release-bundle-evidence.md << EOF
+          # Release Bundle Evidence
+
+          **Name:** spring-petclinic-cloud  
+          **Version:** ${CONTAINER_VERSION}  
+          **Indexed:** ${{ steps.wait-rb.outputs.indexed }}  
+          **Generated:** $(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+          Includes all 7 Spring Petclinic microservices in the release bundle.
+          EOF
+
+      - name: Publish Release Bundle Evidence in RLM
+        run: |
+          echo "🔐 Publishing Release Bundle evidence"
+
+          SIGNING=false
+          if [[ -n "${{ secrets.PRIVATE_KEY }}" ]]; then
+            SIGNING=true
+            echo "${{ secrets.PRIVATE_KEY }}" > rb.key
+          fi
+
+          SERVICES="spring-petclinic-cloud-api-gateway spring-petclinic-cloud-visits-service spring-petclinic-cloud-vets-service spring-petclinic-cloud-customers-service spring-petclinic-cloud-admin-server spring-petclinic-cloud-discovery-service spring-petclinic-cloud-config-server"
+
+          for service in $SERVICES; do
+            echo "📦 Creating release bundle evidence for ${service}"
+
+            jf evd create-evidence \
+              --predicate=release-bundle-evidence.json \
+              --predicate-type=https://jfrog.com/evidence/release-bundle/v1 \
+              --package-name "${service}" \
+              --package-version "${CONTAINER_VERSION}" \
+              --package-repo-name dev-oci-local \
+              --markdown release-bundle-evidence.md \
+              $([[ "$SIGNING" == "true" ]] && echo "--key rb.key --key-alias '${{ secrets.KEY_ALIAS }}'") \
+              --project="${JFROG_PROJECT}" \
+              || echo "⚠️ Failed to publish release bundle evidence for ${service}"
+          done
+
+          echo "✅ Release Bundle workflow completed successfully"

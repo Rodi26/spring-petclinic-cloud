@@ -1,0 +1,29 @@
+name: SLSA Container Provenance (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      image:
+        required: true
+        type: string
+      digest:
+        required: true
+        type: string
+      registry_username:
+        required: false
+        type: string
+        default: "admin"
+    secrets:
+      ORAS_TOKEN:
+        required: true
+
+jobs:
+  container-provenance:
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v2.1.0
+    with:
+      image: ${{ inputs.image }}
+      digest: ${{ inputs.digest }}
+      registry-username: ${{ inputs.registry_username }}
+      private-repository: true
+    secrets:
+      registry-password: ${{ secrets.ORAS_TOKEN }}
