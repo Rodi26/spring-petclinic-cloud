@@ -208,12 +208,7 @@ jobs:
           echo "📝 Creating release bundle evidence..."
           
           BUNDLE_AVAILABLE="${{ steps.wait-rb.outputs.bundle_available }}"
-          
-          if [[ "$BUNDLE_AVAILABLE" == "true" ]]; then
-            echo "✅ Bundle is available, creating evidence..."
-            
-            if [[ -f ""${{ secrets.PRIVATE_KEY }}"" ]]; then
-              if jf evd create-evidence \
+          jf evd create-evidence \
                 --predicate ./feature.json \
                 --predicate-type=https://jfrog.com/evidence/feature-flags/v1 \
                 --release-bundle spring-petclinic-cloud \
@@ -222,34 +217,7 @@ jobs:
                 --key-alias ${{ secrets.KEY_ALIAS }}  \
                 --project=${{ vars.JFROG_PROJECT }} \
                 --markdown feature-flags.md 2>&1; then
-                echo "✅ Release bundle evidence created successfully"
-              else
-                echo "⚠️ Release bundle evidence failed, using build evidence..."
-                jf evd create-evidence \
-                  --predicate ./feature.json \
-                  --predicate-type=https://jfrog.com/evidence/feature-flags/v1 \
-                  --build-name Java_CI_with_Maven \
-                  --build-number ${{ github.run_number }} \
-                  --key "${{ secrets.PRIVATE_KEY }}" \
-                  --key-alias ${{ secrets.KEY_ALIAS }}  \
-                  --project=${{ vars.JFROG_PROJECT }} \
-                  --markdown feature-flags.md || true
-              fi
-            fi
-          else
-            echo "⚠️ Bundle not available, using build evidence as fallback..."
-            if [[ -f ""${{ secrets.PRIVATE_KEY }}"" ]]; then
-              jf evd create-evidence \
-                --predicate ./feature.json \
-                --predicate-type=https://jfrog.com/evidence/feature-flags/v1 \
-                --build-name Java_CI_with_Maven \
-                --build-number ${{ github.run_number }} \
-                --key "${{ secrets.PRIVATE_KEY }}" \
-                --key-alias ${{ secrets.KEY_ALIAS }} \
-                --project=${{ vars.JFROG_PROJECT }} \
-                --markdown feature-flags.md || true
-            fi
-          fi
+             
 
       - name: Build job completion
         run: |
