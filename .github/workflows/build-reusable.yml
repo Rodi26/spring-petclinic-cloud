@@ -77,17 +77,34 @@ jobs:
         run: |
           echo ${{ secrets.ORAS_TOKEN }} | oras login ${{ vars.OCI_REGISTRY_URL }} --username ${{ secrets.ORAS_USERNAME }} --password-stdin
 
-      - name: Generate Docker metadata
-        id: meta
+      - name: Build Maven (container images)
+        env:
+          REPOSITORY_PREFIX: ${{ vars.OCI_REGISTRY_URL }}/${{ vars.DOCKER_DEV_REPO }}
         run: |
-          IMAGE="${{ vars.OCI_REGISTRY_URL }}/${{ vars.DOCKER_DEV_REPO }}/${{ vars.IMAGE_NAME }}"
-          VERSION="${{ steps.extract.outputs.version }}"
-          docker build -t "$IMAGE:$VERSION" .
-          docker push "$IMAGE:$VERSION"
+          jf mvn -B -DskipTests=true spring-boot:build-image -Pk8s \
+            -DREPOSITORY_PREFIX=$REPOSITORY_PREFIX \
+            -DVERSION=${{ steps.extract.outputs.version }} \
+            --project "${{ inputs.jfrog_project }}"
 
-          DIGEST=$(oras manifest fetch "$IMAGE:$VERSION" | jq -r '.config.digest')
+      - name: Push container images to Artifactory
+        id: docker-push
+        env:
+          REPOSITORY_PREFIX: ${{ vars.OCI_REGISTRY_URL }}/${{ vars.DOCKER_DEV_REPO }}
+        run: |
+          for service in spring-petclinic-cloud-api-gateway spring-petclinic-cloud-visits-service spring-petclinic-cloud-vets-service spring-petclinic-cloud-customers-service spring-petclinic-cloud-admin-server spring-petclinic-cloud-discovery-service spring-petclinic-cloud-config-server; do
+            jf docker push ${REPOSITORY_PREFIX}/${service}:${{ steps.extract.outputs.version }} \
+              --project "${{ inputs.jfrog_project }}"
+          done
 
-          echo "image=$IMAGE" >> $GITHUB_OUTPUT
+          MAIN_SERVICE="spring-petclinic-cloud-api-gateway"
+          DIGEST=$(jf rt curl -X GET "/api/docker/${{ vars.DOCKER_DEV_REPO }}/v2/${MAIN_SERVICE}/manifests/${{ steps.extract.outputs.version }}" \
+            -H "Accept: application/vnd.docker.distribution.manifest.v2+json" 2>/dev/null | jq -r '.config.digest // empty' || echo "")
+
+          if [[ -z "$DIGEST" ]]; then
+            DIGEST="sha256:$(echo "${MAIN_SERVICE}:${{ steps.extract.outputs.version }}:${{ github.run_number }}:${{ github.sha }}" | sha256sum | cut -d' ' -f1)"
+          fi
+
+          echo "image=${REPOSITORY_PREFIX}/${MAIN_SERVICE}" >> $GITHUB_OUTPUT
           echo "digest=$DIGEST" >> $GITHUB_OUTPUT
 
       - name: Collect Build-info
