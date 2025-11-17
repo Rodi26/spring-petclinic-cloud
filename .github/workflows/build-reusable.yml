@@ -1,149 +1,65 @@
-name: Build (reusable)
+name: Java CI with Maven (Modular Orchestrator)
 
 on:
-  workflow_call:
-    secrets:
-      JF_URL:
-        required: true
-      JF_ACCESS_TOKEN:
-        required: true
-    outputs:
-      image:
-        description: "Main container image"
-        value: ${{ jobs.build.outputs.image }}
-      digest:
-        description: "Digest of main container image"
-        value: ${{ jobs.build.outputs.digest }}
-      container_version:
-        description: "Unified container version"
-        value: ${{ jobs.build.outputs.container_version }}
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+  schedule:
+    - cron: "0 0 * * *"
+
 permissions:
-  actions: read # for detecting the Github Actions environment
-  id-token: write # for creating OIDC tokens for signing
-  packages: write # for uploading attestations
-  contents: read # read the contents permission
-  security-events: write # for uploading code scanning
-  attestations: write # needed for actions/attest-build-provenance
+  actions: read
+  id-token: write
+  contents: read
+  packages: write
+  security-events: write
+
 jobs:
+
   build:
     name: Build
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        java: ['11']
-    env:
-      REPOSITORY_PREFIX: artifactory.rodolphef.org/dev-oci
-      DOCKER_REPO: dev-oci-local
-      IMAGE_NAME: spring-petclinic-cloud
-      JFROG_PROJECT: ${{ inputs.jfrog_project }}
-    outputs:
-      image: artifactory.rodolphef.org/${{ env.DOCKER_REPO }}/${{ env.IMAGE_NAME }}:${{ env.CONTAINER_VERSION }}
-      digest: ${{ steps.docker-push.outputs.digest }}
-      container_version: ${{ env.CONTAINER_VERSION }}
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+    uses: ./.github/workflows/build-reusable.yml
+    with:
+      jfrog_project: ${{ vars.JFROG_PROJECT }}
+    secrets: inherit
 
-      - name: Set up JDK ${{ matrix.java }}
-        uses: actions/setup-java@v4
-        with:
-          java-version: ${{ matrix.java }}
-          distribution: adopt
-          cache: maven
+  slsa-container-provenance:
+    name: SLSA Container Provenance
+    needs: build
+    uses: ./.github/workflows/slsa-container-provenance.yml
+    with:
+      image: ${{ needs.build.outputs.image }}
+      digest: ${{ needs.build.outputs.digest }}
+      registry_username: "admin"
+    secrets:
+      ORAS_TOKEN: ${{ secrets.ORAS_TOKEN }}
 
-      - name: Setup JFrog CLI
-        uses: jfrog/setup-jfrog-cli@v4
-        with:
-          version: latest
-        env:
-          JF_URL: ${{ secrets.JF_URL }}
-          JF_ACCESS_TOKEN: ${{ secrets.JF_ACCESS_TOKEN }}
+  rlm-evidence:
+    name: RLM Evidence Integration
+    needs: [build, slsa-container-provenance]
+    uses: ./.github/workflows/rlm-evidence.yml
+    with:
+      image: ${{ needs.build.outputs.image }}
+      digest: ${{ needs.build.outputs.digest }}
+      container_version: ${{ needs.build.outputs.container_version }}
+      slsa_success: ${{ needs.slsa-container-provenance.result == 'success' }}
+    secrets: inherit
 
-      - name: Configure JFrog CLI
-        run: |
-          jf mvnc \
-            --repo-deploy-releases=${{ vars.MVN_DEV_REPO_DEPLOY_RELEASES }} \
-            --repo-deploy-snapshots=${{ vars.MVN_DEV_REPO_DEPLOY_SNAPSHOTS }} \
-            --repo-resolve-releases=${{ vars.MVN_DEV_REPO_RESOLVE_RELEASES }} \
-            --repo-resolve-snapshots=${{ vars.MVN_DEV_REPO_RESOLVE_SNAPSHOTS }}
+  xray:
+    name: Xray Scan Results
+    needs: [build, rlm-evidence]
+    if: always() && needs.build.result == 'success'
+    uses: ./.github/workflows/xray-scan.yml
+    with:
+      container_version: ${{ needs.build.outputs.container_version }}
+    secrets: inherit
 
-      - name: Validate Artifactory Dependencies
-        run: |
-          jf mvn validate
-          echo "Checking for corrupted artifacts in repository..."
-          SEARCH_RESULT=$(jf rt search "${{ vars.MVN_DEV_REPO_DEPLOY_RELEASES }}/*.pom" --size=0 2>/dev/null || echo "[]")
-          if echo "$SEARCH_RESULT" | jq -e 'length > 0' >/dev/null 2>&1; then
-            echo "Found corrupted POM files, cleaning up..."
-            echo "$SEARCH_RESULT" | jq -r '.[] | .repo + "/" + .path + "/" + .name' | \
-            while read -r artifact; do
-              echo "Deleting corrupted artifact: $artifact"
-              jf rt delete "$artifact" --quiet || true
-            done
-          else
-            echo "No corrupted POM files found"
-          fi
-
-      - name: Align Project Versioning
-        run: |
-          PROJECT_VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout | sed 's/-SNAPSHOT//')
-          UNIFIED_VERSION="${PROJECT_VERSION}.${GITHUB_RUN_NUMBER}"
-          echo "Current project version: $PROJECT_VERSION"
-          echo "New unified version: $UNIFIED_VERSION"
-          echo "UNIFIED_VERSION=${UNIFIED_VERSION}" >> $GITHUB_ENV
-          
-          PARENT_VERSION=$(mvn help:evaluate -Dexpression=project.parent.version -q -DforceStdout 2>/dev/null || echo "")
-          if [ "$PROJECT_VERSION" = "$PARENT_VERSION" ] && [ -n "$PARENT_VERSION" ]; then
-            echo "Version is inherited from parent POM, skipping version update"
-            echo "Will use build number in container tags instead"
-            echo "CONTAINER_VERSION=${UNIFIED_VERSION}" >> $GITHUB_ENV
-          else
-            echo "Version is not inherited, updating POM version"
-            mvn versions:set -DnewVersion=${UNIFIED_VERSION} -DgenerateBackupPoms=false -DprocessAllModules=true
-            NEW_VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
-            echo "Version after update: $NEW_VERSION"
-            echo "CONTAINER_VERSION=${NEW_VERSION}" >> $GITHUB_ENV
-          fi
-
-      - name: Build Maven (Spring Boot Docker images)
-        env:
-          REPOSITORY_PREFIX: artifactory.rodolphef.org/dev-oci
-        run: |
-          jf mvn -B -DskipTests=true spring-boot:build-image \
-            -Pk8s \
-            -DREPOSITORY_PREFIX=$REPOSITORY_PREFIX \
-            -DVERSION=${{ env.CONTAINER_VERSION }} \
-            --project "${{ env.JFROG_PROJECT }}"
-
-      - name: Push container images to JFrog Artifactory
-        id: docker-push
-        env:
-          REPOSITORY_PREFIX: artifactory.rodolphef.org/dev-oci
-        run: |
-          set -e
-          for service in spring-petclinic-cloud-api-gateway spring-petclinic-cloud-visits-service spring-petclinic-cloud-vets-service spring-petclinic-cloud-customers-service spring-petclinic-cloud-admin-server spring-petclinic-cloud-discovery-service spring-petclinic-cloud-config-server; do
-            jf docker push ${REPOSITORY_PREFIX}/${service}:${{ env.CONTAINER_VERSION }} --project "${{ env.JFROG_PROJECT }}"
-          done
-          
-          MAIN_SERVICE="spring-petclinic-cloud-api-gateway"
-          DIGEST=$(jf rt curl -X GET "/api/docker/${DOCKER_REPO}/v2/${MAIN_SERVICE}/manifests/${{ env.CONTAINER_VERSION }}" \
-            -H "Accept: application/vnd.docker.distribution.manifest.v2+json" 2>/dev/null | jq -r '.config.digest // empty' || echo "")
-          
-          if [[ -z "$DIGEST" ]]; then
-            DIGEST="sha256:$(echo "${MAIN_SERVICE}:${{ env.CONTAINER_VERSION }}:${{ github.run_number }}:${{ github.sha }}" | sha256sum | cut -d' ' -f1)"
-          fi
-          
-          echo "digest=${DIGEST}" >> $GITHUB_OUTPUT
-
-      - name: Publish build info to Artifactory
-        run: |
-          jf rt bce --project "${{ env.JFROG_PROJECT }}"
-          jf rt bag --project "${{ env.JFROG_PROJECT }}"
-          jf rt bp --project "${{ env.JFROG_PROJECT }}"
-          jf rt bs Java_CI_with_Maven ${{ github.run_number }} --project "${{ env.JFROG_PROJECT }}"
-
-      - name: Build job completion
-        run: |
-          echo "✅ Build completed!"
-          echo "Image: artifactory.rodolphef.org/${{ env.DOCKER_REPO }}/${{ env.IMAGE_NAME }}:${{ env.CONTAINER_VERSION }}"
-          echo "Version: ${{ env.CONTAINER_VERSION }}"
-          echo "Build: ${{ github.run_number }}"
+  release_bundle:
+    name: Release Bundle for RLM
+    needs: [build, xray]
+    if: always() && needs.build.result == 'success'
+    uses: ./.github/workflows/release-bundle.yml
+    with:
+      container_version: ${{ needs.build.outputs.container_version }}
+    secrets: inherit
