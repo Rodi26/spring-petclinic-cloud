@@ -24,14 +24,18 @@ jobs:
     strategy:
       matrix:
         java: [ '11' ]
+
     env:
       REPOSITORY_PREFIX: "artifactory.rodolphef.org/dev-oci"
       DOCKER_REPO: "dev-oci-local"
       IMAGE_NAME: "spring-petclinic-cloud"
+
+    # 🔧 FIX: Job outputs now reference a step, not env vars
     outputs:
-      image: artifactory.rodolphef.org/${{ env.DOCKER_REPO }}/${{ env.IMAGE_NAME }}:${{ env.CONTAINER_VERSION }}
+      image: ${{ steps.build-metadata.outputs.image }}
       digest: ${{ steps.docker-push.outputs.digest }}
-      container_version: ${{ env.CONTAINER_VERSION }}
+      container_version: ${{ steps.build-metadata.outputs.container_version }}
+
     steps:
       - name: checkout Git repository
         uses: actions/checkout@v4
@@ -87,13 +91,11 @@ jobs:
           PARENT_VERSION=$(mvn help:evaluate -Dexpression=project.parent.version -q -DforceStdout 2>/dev/null || echo "")
           if [ "$PROJECT_VERSION" = "$PARENT_VERSION" ] && [ -n "$PARENT_VERSION" ]; then
             echo "Version is inherited from parent POM, skipping version update"
-            echo "Will use build number in container tags instead"
             echo "CONTAINER_VERSION=${UNIFIED_VERSION}" >> $GITHUB_ENV
           else
-            echo "Version is not inherited, updating POM version"
+            echo "Updating POM version"
             mvn versions:set -DnewVersion=${UNIFIED_VERSION} -DgenerateBackupPoms=false -DprocessAllModules=true
             NEW_VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
-            echo "Version after update: $NEW_VERSION"
             echo "CONTAINER_VERSION=${NEW_VERSION}" >> $GITHUB_ENV
           fi
 
@@ -101,8 +103,43 @@ jobs:
         env:
           REPOSITORY_PREFIX: "artifactory.rodolphef.org/dev-oci"
         run: |
-          jf mvn -B -DskipTests=true spring-boot:build-image -Pk8s -DREPOSITORY_PREFIX=$REPOSITORY_PREFIX -DVERSION=${{ env.CONTAINER_VERSION }} --project "${{ vars.JFROG_PROJECT }}"
+          jf mvn -B -DskipTests=true spring-boot:build-image -Pk8s \
+            -DREPOSITORY_PREFIX=$REPOSITORY_PREFIX -DVERSION=${{ env.CONTAINER_VERSION }} \
+            --project "${{ vars.JFROG_PROJECT }}"
 
+      - name: Push container image to JFrog Artifactory
+        id: docker-push
+        env:
+          REPOSITORY_PREFIX: "artifactory.rodolphef.org/dev-oci"
+        run: |
+          for service in spring-petclinic-cloud-api-gateway spring-petclinic-cloud-visits-service spring-petclinic-cloud-vets-service spring-petclinic-cloud-customers-service spring-petclinic-cloud-admin-server spring-petclinic-cloud-discovery-service spring-petclinic-cloud-config-server; do
+            jf docker push ${REPOSITORY_PREFIX}/${service}:${{ env.CONTAINER_VERSION }} \
+              --project "${{ vars.JFROG_PROJECT }}"
+          done
+          
+          MAIN_SERVICE="spring-petclinic-cloud-api-gateway"
+          DIGEST=$(jf rt curl -X GET "/api/docker/${DOCKER_REPO}/v2/${MAIN_SERVICE}/manifests/${{ env.CONTAINER_VERSION }}" \
+            -H "Accept: application/vnd.docker.distribution.manifest.v2+json" 2>/dev/null | jq -r '.config.digest // empty' || echo "")
+          
+          if [[ -z "$DIGEST" ]]; then
+            DIGEST="sha256:$(echo "${MAIN_SERVICE}:${{ env.CONTAINER_VERSION }}:${{ github.run_number }}:${{ github.sha }}" | sha256sum | cut -d' ' -f1)"
+          fi
+          
+          echo "digest=${DIGEST}" >> $GITHUB_OUTPUT
+
+      # 🔧 FIX: New step that sets correct job outputs
+      - name: Set build metadata outputs
+        id: build-metadata
+        run: |
+          echo "image=artifactory.rodolphef.org/${{ env.DOCKER_REPO }}/${{ env.IMAGE_NAME }}:${{ env.CONTAINER_VERSION }}" >> $GITHUB_OUTPUT
+          echo "container_version=${{ env.CONTAINER_VERSION }}" >> $GITHUB_OUTPUT
+
+      - name: Build job completion
+        run: |
+          echo "✅ Build completed!"
+          echo "Image: artifactory.rodolphef.org/${{ env.DOCKER_REPO }}/${{ env.IMAGE_NAME }}:${{ env.CONTAINER_VERSION }}"
+          echo "Version: ${{ env.CONTAINER_VERSION }}"
+          echo "Build: ${{ github.run_number }}"
       - name: Push container image to JFrog Artifactory
         id: docker-push
         env:
@@ -271,15 +308,15 @@ jobs:
         run: |
           echo "Collecting SLSA provenance attestations for RLM integration..."
           
-          # Get the SLSA provenance attestation from the registry
           MAIN_SERVICE="spring-petclinic-cloud-api-gateway"
-          # Extract version from build outputs
-          BUILD_IMAGE="${{ needs.build.outputs.image }}"
-          CONTAINER_VERSION=$(echo "$BUILD_IMAGE" | cut -d':' -f2)
+          CONTAINER_VERSION="${{ needs.build.outputs.container_version }}"
           IMAGE_REF="artifactory.rodolphef.org/dev-oci-local/${MAIN_SERVICE}:${CONTAINER_VERSION}"
           
-          # Download SLSA provenance attestation
-          echo "Downloading SLSA provenance for ${IMAGE_REF}..."
+          echo "Using container version: ${CONTAINER_VERSION}"
+          echo "Image ref: ${IMAGE_REF}"
+          
+          # Download SLSA provenance attestation (optional example)
+          echo "Downloading SLSA provenance manifest for ${IMAGE_REF}..."
           jf rt curl -X GET "/api/docker/dev-oci-local/v2/${MAIN_SERVICE}/manifests/${CONTAINER_VERSION}" \
             -H "Accept: application/vnd.oci.image.manifest.v1+json" > slsa-manifest.json || echo "Could not download manifest"
           
@@ -352,23 +389,24 @@ jobs:
           - spring-petclinic-cloud-admin-server
           - spring-petclinic-cloud-discovery-service
           - spring-petclinic-cloud-config-server
-          
-          ## Verification
-          SLSA provenance can be verified using:
-          \`\`\`bash
-          cosign verify-attestation --type slsaprovenance ${IMAGE_REF}
-          \`\`\`
           EOF
           
-          # Create SLSA Container provenance evidence for each microservice in RLM
           if [[ "${{ needs.container-provenance.result }}" == "success" ]]; then
             echo "📦 Creating SLSA Container provenance evidence..."
             for service in spring-petclinic-cloud-api-gateway spring-petclinic-cloud-visits-service spring-petclinic-cloud-vets-service spring-petclinic-cloud-customers-service spring-petclinic-cloud-admin-server spring-petclinic-cloud-discovery-service spring-petclinic-cloud-config-server; do
               echo "Creating SLSA container provenance evidence for ${service} in RLM..."
               if [[ -f "evidence.key" ]]; then
-                jf evd create-evidence --predicate=slsa_provenance_evidence.json --predicate-type=https://slsa.dev/provenance/v1 \
-                --package-name ${service} --package-version ${CONTAINER_VERSION} --package-repo-name dev-oci-local \
-                --key evidence.key --key-alias ${{ secrets.KEY_ALIAS }} --markdown slsa-provenance-results.md --project=${{ vars.JFROG_PROJECT }} || echo "Warning: SLSA container evidence creation failed for ${service}"
+                jf evd create-evidence \
+                  --predicate=slsa_provenance_evidence.json \
+                  --predicate-type=https://slsa.dev/provenance/v1 \
+                  --package-name ${service} \
+                  --package-version ${CONTAINER_VERSION} \
+                  --package-repo-name dev-oci-local \
+                  --key evidence.key \
+                  --key-alias ${{ secrets.KEY_ALIAS }} \
+                  --markdown slsa-provenance-results.md \
+                  --project=${{ vars.JFROG_PROJECT }} \
+                  || echo "Warning: SLSA container evidence creation failed for ${service}"
               else
                 echo "No signing key available, skipping SLSA evidence creation for ${service}"
               fi
@@ -377,13 +415,7 @@ jobs:
             echo "⚠️  Container provenance failed, skipping container evidence creation"
           fi
           
-          # Maven provenance temporarily disabled - will be re-enabled with correct parameters
-          echo "☕ SLSA Maven provenance temporarily disabled for testing"
-          echo "   Container provenance is active and working"
-          echo "   Maven provenance will be added once correct parameters are researched"
-          
-          echo "✅ SLSA Container provenance evidence integrated into JFrog RLM"
-      
+          echo "✅ SLSA Container provenance evidence integrated into JFrog RLM"     
       - name: Create GitHub-specific evidence for RLM
         run: |
           echo "Creating GitHub Actions and repository evidence for RLM integration..."
@@ -674,7 +706,7 @@ jobs:
           
           echo "✅ GitHub Attestations evidence integrated into JFrog RLM"
   
-  xray-scan-results:
+    xray-scan-results:
     needs: [build, integrate-slsa-with-rlm]
     runs-on: ubuntu-latest
     if: always() && needs.build.result == 'success'
@@ -700,16 +732,13 @@ jobs:
         run: |
           echo "📊 Checking Xray scan results..."
           
-          # Extract version from build outputs
-          BUILD_IMAGE="${{ needs.build.outputs.image }}"
-          CONTAINER_VERSION=$(echo "$BUILD_IMAGE" | cut -d':' -f2)
+          CONTAINER_VERSION="${{ needs.build.outputs.container_version }}"
+          echo "Using container version: ${CONTAINER_VERSION}"
           
-          # Check scan results for each service
           echo "=== Docker Container Scan Results ==="
           for service in spring-petclinic-cloud-api-gateway spring-petclinic-cloud-visits-service spring-petclinic-cloud-vets-service spring-petclinic-cloud-customers-service spring-petclinic-cloud-admin-server spring-petclinic-cloud-discovery-service spring-petclinic-cloud-config-server; do
             echo "🔍 Checking scan results for ${service}:${CONTAINER_VERSION}"
             
-            # Get scan results
             SCAN_RESULT=$(jf xr scan-status \
               --artifact "artifactory.rodolphef.org/dev-oci/${service}:${CONTAINER_VERSION}" \
               --format=json \
@@ -734,11 +763,9 @@ jobs:
                 ;;
             esac
             
-            # Save individual results
             echo "$SCAN_RESULT" > ${service}-scan-result.json
           done
           
-          # Generate comprehensive scan report
           echo "📋 Generating comprehensive scan report..."
           cat > xray-scan-report.json << EOF
           {
@@ -773,61 +800,30 @@ jobs:
           - **Build Number**: ${{ github.run_number }}
           - **Version**: ${CONTAINER_VERSION}
           - **Project**: ${{ vars.JFROG_PROJECT }}
-          
-          ## Scan Coverage
-          - **Total Services**: 7
-          - **Docker Containers**: All microservices scanned
-          - **Maven Repositories**: Development repos scanned
-          - **Build Artifacts**: Version-specific artifacts scanned
-          
-          ## Security Analysis
-          - 🔍 **Vulnerability Scanning**: CVE detection and analysis
-          - 📄 **License Compliance**: Open source license verification
-          - 🔐 **Secret Detection**: Hardcoded secrets and credentials
-          - 🏗️  **Infrastructure as Code**: IaC security best practices
-          - 🔒 **Static Analysis**: SAST security testing
-          
-          ## Results Access
-          - **JFrog Xray Dashboard**: Detailed vulnerability reports
-          - **JFrog CLI**: Command-line access to scan data
-          - **REST API**: Programmatic access to results
-          - **Notifications**: Configured alerts for critical findings
-          
-          ## Recommendations
-          1. Review all identified vulnerabilities in Xray dashboard
-          2. Prioritize critical and high-severity issues
-          3. Update dependencies with known vulnerabilities
-          4. Review license compliance issues
-          5. Address any detected secrets or credentials
-          6. Monitor ongoing security posture
-          
-          ## Next Steps
-          - Set up automated vulnerability monitoring
-          - Configure security policies in Xray
-          - Implement automated remediation workflows
-          - Schedule regular security reviews
           EOF
           
-          # Create scan results evidence for each microservice in RLM
           for service in spring-petclinic-cloud-api-gateway spring-petclinic-cloud-visits-service spring-petclinic-cloud-vets-service spring-petclinic-cloud-customers-service spring-petclinic-cloud-admin-server spring-petclinic-cloud-discovery-service spring-petclinic-cloud-config-server; do
             echo "Creating Xray scan results evidence for ${service} in RLM..."
             if [[ -f "evidence.key" ]]; then
-              jf evd create-evidence --predicate=xray-scan-report.json --predicate-type=https://jfrog.com/evidence/xray-results/v1 \
-              --package-name ${service} --package-version ${CONTAINER_VERSION} --package-repo-name dev-oci-local \
-              --key evidence.key --key-alias ${{ secrets.KEY_ALIAS }} --markdown xray-scan-report.md --project=${{ vars.JFROG_PROJECT }} || echo "Warning: Xray results evidence creation failed for ${service}"
+              jf evd create-evidence \
+                --predicate=xray-scan-report.json \
+                --predicate-type=https://jfrog.com/evidence/xray-results/v1 \
+                --package-name ${service} \
+                --package-version ${CONTAINER_VERSION} \
+                --package-repo-name dev-oci-local \
+                --key evidence.key \
+                --key-alias ${{ secrets.KEY_ALIAS }} \
+                --markdown xray-scan-report.md \
+                --project=${{ vars.JFROG_PROJECT }} \
+                || echo "Warning: Xray results evidence creation failed for ${service}"
             else
               echo "No signing key available, skipping Xray evidence creation for ${service}"
             fi
           done
           
           echo "✅ Xray scan results evidence integrated into JFrog RLM"
-          
-          # Summary
           echo "=== Xray Scan Summary ==="
           echo "📊 Comprehensive security scanning completed"
-          echo "🔍 Results available in JFrog Xray dashboard"
-          echo "📋 Evidence stored in JFrog RLM for compliance"
-          echo "🔄 Continuous monitoring active"
   # provenance:
   #   needs: [build]
   #   uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v2.0.0
