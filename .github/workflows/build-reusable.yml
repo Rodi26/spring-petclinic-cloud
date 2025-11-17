@@ -1,65 +1,88 @@
-name: Java CI with Maven (Modular Orchestrator)
+name: Build (Reusable)
 
 on:
-  push:
-    branches: [ master ]
-  pull_request:
-    branches: [ master ]
-  schedule:
-    - cron: "0 0 * * *"
-
-permissions:
-  actions: read
-  id-token: write
-  contents: read
-  packages: write
-  security-events: write
+  workflow_call:
+    inputs:
+      jfrog_project:
+        required: true
+        type: string
+    secrets:
+      JF_URL:
+        required: true
+      JF_ACCESS_TOKEN:
+        required: true
+      ORAS_TOKEN:
+        required: true
 
 jobs:
-
   build:
-    name: Build
-    uses: ./.github/workflows/build-reusable.yml
-    with:
-      jfrog_project: ${{ vars.JFROG_PROJECT }}
-    secrets: inherit
+    name: Build & Publish Artifacts
+    runs-on: ubuntu-latest
 
-  slsa-container-provenance:
-    name: SLSA Container Provenance
-    needs: build
-    uses: ./.github/workflows/slsa-container-provenance.yml
-    with:
-      image: ${{ needs.build.outputs.image }}
-      digest: ${{ needs.build.outputs.digest }}
-      registry_username: "admin"
-    secrets:
-      ORAS_TOKEN: ${{ secrets.ORAS_TOKEN }}
+    outputs:
+      image: ${{ steps.meta.outputs.image }}
+      digest: ${{ steps.meta.outputs.digest }}
+      container_version: ${{ steps.extract.outputs.version }}
 
-  rlm-evidence:
-    name: RLM Evidence Integration
-    needs: [build, slsa-container-provenance]
-    uses: ./.github/workflows/rlm-evidence.yml
-    with:
-      image: ${{ needs.build.outputs.image }}
-      digest: ${{ needs.build.outputs.digest }}
-      container_version: ${{ needs.build.outputs.container_version }}
-      slsa_success: ${{ needs.slsa-container-provenance.result == 'success' }}
-    secrets: inherit
+    env:
+      JFROG_PROJECT: ${{ inputs.jfrog_project }}
 
-  xray:
-    name: Xray Scan Results
-    needs: [build, rlm-evidence]
-    if: always() && needs.build.result == 'success'
-    uses: ./.github/workflows/xray-scan.yml
-    with:
-      container_version: ${{ needs.build.outputs.container_version }}
-    secrets: inherit
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-  release_bundle:
-    name: Release Bundle for RLM
-    needs: [build, xray]
-    if: always() && needs.build.result == 'success'
-    uses: ./.github/workflows/release-bundle.yml
-    with:
-      container_version: ${{ needs.build.outputs.container_version }}
-    secrets: inherit
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup JFrog CLI
+        uses: jfrog/setup-jfrog-cli@v4
+        env:
+          JF_URL: ${{ secrets.JF_URL }}
+          JF_ACCESS_TOKEN: ${{ secrets.JF_ACCESS_TOKEN }}
+
+      - name: Configure Maven with JFrog
+        run: |
+          jf mvnc \
+            --repo-resolve-releases=dev-maven-virtual \
+            --repo-resolve-snapshots=dev-maven-virtual \
+            --repo-deploy-releases=dev-maven-local \
+            --repo-deploy-snapshots=dev-maven-local
+
+      - name: Build Maven project
+        run: jf mvn clean install -DskipTests
+
+      - name: Extract version from POM
+        id: extract
+        run: |
+          VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
+          VERSION=${VERSION/-SNAPSHOT/}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Unified Version: $VERSION"
+
+      - name: Log in to OCI registry (Artifactory)
+        run: |
+          echo ${{ secrets.ORAS_TOKEN }} | oras login artifactory.rodolphef.org --username admin --password-stdin
+
+      - name: Generate Docker metadata
+        id: meta
+        run: |
+          IMAGE="artifactory.rodolphef.org/dev-oci-local/spring-petclinic-cloud"
+          VERSION="${{ steps.extract.outputs.version }}"
+          docker build -t "$IMAGE:$VERSION" .
+          docker push "$IMAGE:$VERSION"
+
+          DIGEST=$(oras manifest fetch "$IMAGE:$VERSION" | jq -r '.config.digest')
+
+          echo "image=$IMAGE" >> $GITHUB_OUTPUT
+          echo "digest=$DIGEST" >> $GITHUB_OUTPUT
+
+      - name: Collect Build-info
+        run: |
+          jf rt bce --project="${JFROG_PROJECT}"
+          jf rt bag
+          jf rt bp
+          jf build-scan --build-name="Java CI Build" --build-number="${{ github.run_number }}" --project="${JFROG_PROJECT}"
+          jf rt bs "Java CI Build" "${{ github.run_number }}" --project="${JFROG_PROJECT}"
