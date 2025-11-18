@@ -12,11 +12,9 @@ on:
       registry_username:
         required: false
         type: string
-        default: ${{ github.actor }}
+        default: ''
     secrets:
       ORAS_TOKEN:
-        required: true
-      JF_URL:
         required: true
 
 permissions:
@@ -29,26 +27,11 @@ permissions:
 
 jobs:
   provenance:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Setup JFrog CLI
-        uses: jfrog/setup-jfrog-cli@v4
-        env:
-          JF_URL: ${{ secrets.JF_URL }}
-          JF_ACCESS_TOKEN: ${{ secrets.ORAS_TOKEN }}
-      
-      - name: Login to JFrog Artifactory
-        run: |
-          echo "${{ secrets.ORAS_TOKEN }}" | docker login artifactory.rodolphef.org \
-            --username ${{ inputs.registry_username }} \
-            --password-stdin
-      
-      - name: Generate SLSA Provenance
-        uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v2.1.0
-        with:
-          image: ${{ inputs.image }}
-          digest: ${{ inputs.digest }}
-          registry-username: ${{ inputs.registry_username }}
-          private-repository: true
-        secrets:
-          registry-password: ${{ secrets.ORAS_TOKEN }}
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v2.1.0
+    with:
+      image: ${{ inputs.image }}
+      digest: ${{ inputs.digest }}
+      registry-username: ${{ inputs.registry_username || github.actor }}
+      private-repository: true
+    secrets:
+      registry-password: ${{ secrets.ORAS_TOKEN }}

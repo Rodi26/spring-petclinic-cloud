@@ -104,7 +104,6 @@ jobs:
     with:
       image: ${{ needs.build.outputs.image }}
       digest: ${{ needs.build.outputs.digest }}
-      registry_username: ${{ vars.ARTIFACTORY_USERNAME }}
+      registry_username: ${{ secrets.ORAS_USERNAME }}
     secrets:
-      ORAS_TOKEN: ${{ secrets.JF_ACCESS_TOKEN }}
-      JF_URL: ${{ secrets.JF_URL }}
+      ORAS_TOKEN: ${{ secrets.ORAS_TOKEN }}
