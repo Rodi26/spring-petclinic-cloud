@@ -1,280 +1,53 @@
-name: Promote
+name: Promote Build
 
 on:
-  workflow_run:
-    workflows: ["Java_CI_with_Maven"]
-    types:
-      - completed
-    branches: [ master ]
-  workflow_dispatch:
+  workflow_call:
     inputs:
+      build_name:
+        required: true
+        type: string
       build_number:
-        description: 'Build number from Java_CI_with_Maven workflow to promote'
-        required: false
+        required: true
         type: string
-        default: 'latest'
-      version:
-        description: 'Version to promote (e.g., 2.6.3.285) - leave empty to auto-detect'
-        required: false
+      jfrog_project:
+        required: true
         type: string
-      release_bundle_name:
-        description: 'Release bundle name'
-        required: false
+      target_repo:
+        required: true
         type: string
-        default: 'spring-petclinic-cloud-promoted'
-      environment:
-        description: 'Target environment'
-        required: false
-        type: choice
-        options:
-          - production-ready
-          - staging
-          - qa
-        default: 'production-ready'
-  push:
-    branches: [ master ]
-    paths: [ '.github/workflows/promote.yml' ]
-  schedule:
-    # Allow scheduled promotions of latest successful build
-    - cron: "0 2 * * *"
-permissions:
-  actions: read           # for  detecting the Github Actions environment
-  id-token: write         # for creating OIDC tokens for signing
-  packages: write         # for uploading attestations
-  contents: read          # read the contents permission
-  security-events: write  # for uploading code scanning
-
+    secrets:
+      JF_URL:
+        required: true
+      JF_ACCESS_TOKEN:
+        required: true
 
 jobs:
   promote:
-    name: Promote Release Bundle
+    name: Promote Build Artifacts
     runs-on: ubuntu-latest
-    # Run if workflow_run was successful, or for any other trigger type
-    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name != 'workflow_run' }}
-    steps:
-      - name: Check workflow trigger and determine execution mode
-        run: |
-          case "${{ github.event_name }}" in
-            "workflow_run")
-              echo "🚀 Triggered by successful Java_CI_with_Maven workflow"
-              echo "Workflow run ID: ${{ github.event.workflow_run.id }}"
-              echo "Workflow conclusion: ${{ github.event.workflow_run.conclusion }}"
-              echo "Build number: ${{ github.event.workflow_run.run_number }}"
-              echo "EXECUTION_MODE=automatic" >> $GITHUB_ENV
-              ;;
-            "workflow_dispatch")
-              echo "🚀 Manually triggered promotion"
-              echo "Build number: ${{ github.event.inputs.build_number || 'latest' }}"
-              echo "Version: ${{ github.event.inputs.version || 'auto-detect' }}"
-              echo "Environment: ${{ github.event.inputs.environment || 'production-ready' }}"
-              echo "Release bundle: ${{ github.event.inputs.release_bundle_name || 'spring-petclinic-cloud-promoted' }}"
-              echo "EXECUTION_MODE=manual" >> $GITHUB_ENV
-              ;;
-            "push")
-              echo "🚀 Triggered by workflow file update - promoting latest build"
-              echo "EXECUTION_MODE=push_trigger" >> $GITHUB_ENV
-              ;;
-            "schedule")
-              echo "🚀 Scheduled promotion of latest successful build"
-              echo "EXECUTION_MODE=scheduled" >> $GITHUB_ENV
-              ;;
-            *)
-              echo "🚀 Independent promotion execution"
-              echo "EXECUTION_MODE=independent" >> $GITHUB_ENV
-              ;;
-          esac
-      - name: checkout Git repository
-        uses: actions/checkout@v4
-        with:
-          # On workflow_run, checkout the specific commit that was built.
-          # On other events, this will be empty and checkout the default branch.
-          ref: ${{ github.event.workflow_run.head_sha }}
 
-      - name: Set up JDK 11
-        uses: actions/setup-java@v4
-        with:
-          java-version: 11
-          distribution: 'adopt'
-          cache: maven
-      
+    env:
+      JFROG_PROJECT: ${{ inputs.jfrog_project }}
+      TARGET_REPO: ${{ inputs.target_repo }}
+
+    steps:
       - name: Setup JFrog CLI
         uses: jfrog/setup-jfrog-cli@v4
         env:
           JF_URL: ${{ secrets.JF_URL }}
           JF_ACCESS_TOKEN: ${{ secrets.JF_ACCESS_TOKEN }}
-      
-      - name: Set promotion variables
+
+      - name: Promote Build
         run: |
-          # Get base version from POM
-          BASE_VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout | sed 's/-SNAPSHOT//')
-          ARTIFACT_NAME=$(mvn help:evaluate -Dexpression=project.artifactId -q -DforceStdout)
-          
-          case "$EXECUTION_MODE" in
-            "automatic")
-              # Use version from triggering workflow
-              BUILD_NUMBER="${{ github.event.workflow_run.run_number }}"
-              PROMOTION_VERSION="${BASE_VERSION}.${BUILD_NUMBER}"
-              ;;
-            "manual")
-              # Use provided values or auto-detect
-              if [[ -n "${{ github.event.inputs.version }}" ]]; then
-                PROMOTION_VERSION="${{ github.event.inputs.version }}"
-                BUILD_NUMBER=$(echo "$PROMOTION_VERSION" | cut -d'.' -f4)
-              elif [[ "${{ github.event.inputs.build_number }}" != "latest" ]]; then
-                BUILD_NUMBER="${{ github.event.inputs.build_number }}"
-                PROMOTION_VERSION="${BASE_VERSION}.${BUILD_NUMBER}"
-              else
-                # Find latest successful build
-                echo "🔍 Finding latest successful build..."
-                LATEST_BUILD=$(jf rt search "dev-oci-local/spring-petclinic-cloud-api-gateway/*/manifest.json" \
-                  --sort-by=created --sort-order=desc --limit=1 --format=json | \
-                  jq -r '.[0].path' | sed 's|.*/\([0-9.]*\)/.*|\1|' || echo "")
-                if [[ -n "$LATEST_BUILD" ]]; then
-                  PROMOTION_VERSION="$LATEST_BUILD"
-                  BUILD_NUMBER=$(echo "$PROMOTION_VERSION" | cut -d'.' -f4)
-                else
-                  echo "❌ Could not find latest build"
-                  exit 1
-                fi
-              fi
-              ;;
-            "scheduled"|"push_trigger"|"independent")
-              # Find latest successful build for independent execution
-              echo "🔍 Finding latest successful build for independent promotion..."
-              LATEST_BUILD=$(jf rt search "dev-oci-local/spring-petclinic-cloud-api-gateway/*/manifest.json" \
-                --sort-by=created --sort-order=desc --limit=1 --format=json | \
-                jq -r '.[0].path' | sed 's|.*/\([0-9.]*\)/.*|\1|' || echo "")
-              if [[ -n "$LATEST_BUILD" ]]; then
-                PROMOTION_VERSION="$LATEST_BUILD"
-                BUILD_NUMBER=$(echo "$PROMOTION_VERSION" | cut -d'.' -f4)
-              else
-                echo "❌ Could not find latest build for promotion"
-                exit 1
-              fi
-              ;;
-          esac
-          
-          # Set environment variables
-          echo "BUILD_NUMBER=${BUILD_NUMBER}" >> $GITHUB_ENV
-          echo "PROMOTION_VERSION=${PROMOTION_VERSION}" >> $GITHUB_ENV
-          echo "ARTIFACT_NAME=${ARTIFACT_NAME}" >> $GITHUB_ENV
-          echo "RELEASE_BUNDLE_NAME=${{ github.event.inputs.release_bundle_name || 'spring-petclinic-cloud-promoted' }}" >> $GITHUB_ENV
-          echo "TARGET_ENVIRONMENT=${{ github.event.inputs.environment || 'production-ready' }}" >> $GITHUB_ENV
-          
-          echo "🏷️  Promotion Details:"
-          echo "  - Execution Mode: ${EXECUTION_MODE}"
-          echo "  - Build Number: ${BUILD_NUMBER}"
-          echo "  - Version: ${PROMOTION_VERSION}"
-          echo "  - Artifact: ${ARTIFACT_NAME}"
-          echo "  - Release Bundle: ${{ github.event.inputs.release_bundle_name || 'spring-petclinic-cloud-promoted' }}"
-          echo "  - Environment: ${{ github.event.inputs.environment || 'production-ready' }}"
-      
-      - name: Verify artifacts exist before promotion
-        run: |
-          echo "🔍 Verifying artifacts exist for promotion..."
-          # Get module list from Maven POM
-          MODULES=$(mvn help:evaluate -Dexpression=project.modules -q -DforceStdout | sed 's/\[//' | sed 's/\]//' | sed 's/,//g')
-          
-          # Check if Docker containers exist for this version
-          for service in ${MODULES}; do
-            echo "Checking ${service}:${PROMOTION_VERSION}..."
-            if jf rt search "dev-oci-local/${service}/${PROMOTION_VERSION}/*" --format=json | jq -e 'length > 0' >/dev/null; then
-              echo "✅ ${service}:${PROMOTION_VERSION} found"
-            else
-              echo "❌ ${service}:${PROMOTION_VERSION} not found"
-              exit 1
-            fi
-          done
-          
-          echo "✅ All artifacts verified for promotion"
-      
-      - name: Create Release Bundle for RLM
-        run: |
-          echo "📦 Creating release bundle for version ${PROMOTION_VERSION}..."
-          
-          # Create file spec for the release bundle
-          cat > promotion-release-bundle-spec.json << EOF
-          {
-            "files": [
-              {
-                "pattern": "dev-oci-local/spring-petclinic-cloud-*/${PROMOTION_VERSION}/*"
-              }
-            ]
-          }
-          EOF
-          
-          # Create release bundle with proper version
-          jf rbc --spec promotion-release-bundle-spec.json \
-            --signing-key=${{ secrets.Key }} \
-            ${RELEASE_BUNDLE_NAME} \
-            ${PROMOTION_VERSION} \
-            --sync=true
-          
-          echo "✅ Release bundle created: ${RELEASE_BUNDLE_NAME}:${PROMOTION_VERSION}"
-      
-      - name: Create promotion evidence
-        run: |
-          echo "📋 Creating promotion evidence..."
-          # Get module list from Maven POM
-          MODULES=$(mvn help:evaluate -Dexpression=project.modules -q -DforceStdout | sed 's/\[//' | sed 's/\]//' | sed 's/,//g')
-          PROMOTED_ARTIFACTS_JSON=$(for m in ${MODULES}; do echo "\"${m}:${PROMOTION_VERSION}\""; done | paste -sd, -)
-          
-          cat > promotion_evidence.json << EOF
-          {
-            "promotion": {
-              "version": "v1",
-              "promoted_version": "${PROMOTION_VERSION}",
-              "build_number": "${BUILD_NUMBER}",
-              "promoted_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-              "promoted_by": "${{ github.actor }}",
-              "execution_mode": "${EXECUTION_MODE}",
-              "source_workflow": {
-                "name": "Java_CI_with_Maven",
-                "run_id": "${{ github.event.workflow_run.id || 'independent' }}",
-                "conclusion": "${{ github.event.workflow_run.conclusion || 'independent' }}"
-              },
-              "promoted_artifacts": [${PROMOTED_ARTIFACTS_JSON}],
-              "release_bundle": "${RELEASE_BUNDLE_NAME}:${PROMOTION_VERSION}",
-              "environment": "${TARGET_ENVIRONMENT}"
-            }
-          }
-          EOF
-          
-          cat > promotion-results.md << EOF
-          # Promotion Evidence
-          
-          ## Promotion Summary
-          - **Version**: ${PROMOTION_VERSION}
-          - **Build Number**: ${BUILD_NUMBER}
-          - **Promoted At**: $(date -u +%Y-%m-%dT%H:%M:%SZ)
-          - **Promoted By**: ${{ github.actor }}
-          - **Environment**: ${TARGET_ENVIRONMENT}
-          - **Execution Mode**: ${EXECUTION_MODE}
-          
-          ## Source Build
-          - **Workflow**: Java_CI_with_Maven
-          - **Run ID**: ${{ github.event.workflow_run.id || 'independent' }}
-          - **Conclusion**: ${{ github.event.workflow_run.conclusion || 'independent' }}
-          
-          ## Promoted Artifacts 
-          $(for m in ${MODULES}; do echo "- ✅ ${m}:${PROMOTION_VERSION}"; done)
-          
-          ## Release Bundle
-          - **Name**: ${RELEASE_BUNDLE_NAME}
-          - **Version**: ${PROMOTION_VERSION}
-          - **Status**: ✅ Created and Signed
-          
-          ## Next Steps
-          - The release bundle is now ready for distribution to the `${TARGET_ENVIRONMENT}` environment.
-          EOF
-          
-          # Create promotion evidence for the release bundle
-          echo "Creating promotion evidence for release bundle ${RELEASE_BUNDLE_NAME}:${PROMOTION_VERSION}..."
-          jf evd create --predicate=promotion_evidence.json --predicate-type=https://jfrog.com/evidence/promotion/v1 \
-            --rb-name=${RELEASE_BUNDLE_NAME} --rb-version=${PROMOTION_VERSION} \
-            --markdown promotion-results.md --project=${{ vars.JFROG_PROJECT }}
-          
-          echo "✅ Promotion completed successfully!"
-          echo "🚀 Release bundle ${RELEASE_BUNDLE_NAME}:${PROMOTION_VERSION} is ready for deployment"
-          echo "📊 Execution mode: ${EXECUTION_MODE}"
-          echo "🎯 Target environment: ${TARGET_ENVIRONMENT}"
+          echo "▶ Promoting build: ${{ inputs.build_name }} #${{ inputs.build_number }}"
+          echo "▶ Target repo: $TARGET_REPO"
+
+          jf rt build-promote \
+            "${{ inputs.build_name }}" \
+            "${{ inputs.build_number }}" \
+            "$TARGET_REPO" \
+            --comment="Automated Promotion - GitHub Actions" \
+            --copy=true \
+            --project="${JFROG_PROJECT}"
+
+          echo "✔ Build promoted successfully."

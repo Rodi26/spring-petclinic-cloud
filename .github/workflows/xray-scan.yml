@@ -1,9 +1,15 @@
-name: Xray Scan Results (reusable)
+name: Xray Security Scan
 
 on:
   workflow_call:
     inputs:
-      container_version:
+      jfrog_project:
+        required: true
+        type: string
+      build_name:
+        required: true
+        type: string
+      build_number:
         required: true
         type: string
     secrets:
@@ -11,120 +17,46 @@ on:
         required: true
       JF_ACCESS_TOKEN:
         required: true
-      PRIVATE_KEY:
-        required: false
-      KEY_ALIAS:
-        required: false
 
 jobs:
-  xray-scan-results:
-    name: Xray Scan Results
+  xray-scan:
+    name: Xray Build Scan
     runs-on: ubuntu-latest
+
     env:
-      JFROG_PROJECT: ${{ vars.JFROG_PROJECT }}
-      CONTAINER_VERSION: ${{ inputs.container_version }}
+      JFROG_PROJECT: ${{ inputs.jfrog_project }}
+      BUILD_NAME: ${{ inputs.build_name }}
+      BUILD_NUMBER: ${{ inputs.build_number }}
 
     steps:
+
       - name: Setup JFrog CLI
         uses: jfrog/setup-jfrog-cli@v4
         env:
           JF_URL: ${{ secrets.JF_URL }}
           JF_ACCESS_TOKEN: ${{ secrets.JF_ACCESS_TOKEN }}
 
-      - name: Configure JFrog CLI
+      - name: Run Xray Scan
+        id: xray
         run: |
-          jf mvnc \
-            --repo-deploy-releases=${{ vars.MVN_DEV_REPO_DEPLOY_RELEASES }} \
-            --repo-deploy-snapshots=${{ vars.MVN_DEV_REPO_DEPLOY_SNAPSHOTS }} \
-            --repo-resolve-releases=${{ vars.MVN_DEV_REPO_RESOLVE_RELEASES }} \
-            --repo-resolve-snapshots=${{ vars.MVN_DEV_REPO_RESOLVE_SNAPSHOTS }}
+          echo "▶ Running Xray scan for build:"
+          echo "  - Name:   $BUILD_NAME"
+          echo "  - Number: $BUILD_NUMBER"
+          echo "  - Project: $JFROG_PROJECT"
 
-      - name: Wait for Xray scans to complete
-        run: |
-          echo "⏳ Waiting 120 seconds for asynchronous Xray scans to complete"
-          sleep 120
+          # Scan the build
+          # Note: This command FAILS only if a “Fail build” rule is triggered.
+          jf build-scan \
+            "$BUILD_NAME" \
+            "$BUILD_NUMBER" \
+            --project="$JFROG_PROJECT" \
+            --format=json > xray-result.json
 
-      - name: Collect Xray Scan Results
-        run: |
-          echo "📊 Collecting Xray scan results for all microservices"
+          echo "✔ Xray scan completed. Results saved to xray-result.json"
+          echo "file=xray-result.json" >> $GITHUB_OUTPUT
 
-          SERVICES="spring-petclinic-cloud-api-gateway spring-petclinic-cloud-visits-service spring-petclinic-cloud-vets-service spring-petclinic-cloud-customers-service spring-petclinic-cloud-admin-server spring-petclinic-cloud-discovery-service spring-petclinic-cloud-config-server"
-
-          echo "[" > xray-scan-report.json
-
-          FIRST=true
-          for service in $SERVICES; do
-            echo "🔍 Retrieving Xray scan results for ${service}:${CONTAINER_VERSION}"
-
-            RESULT=$(jf xr scan-status \
-              --artifact "artifactory.rodolphef.org/dev-oci/${service}:${CONTAINER_VERSION}" \
-              --format=json \
-              --project "${JFROG_PROJECT}" 2>/dev/null \
-              || echo '{"status":"unknown"}')
-
-            echo "$RESULT" > "${service}-xray.json"
-
-            STATUS=$(echo "$RESULT" | jq -r '.status // "unknown"')
-            VULNS=$(echo "$RESULT" | jq -r '.vulnerabilities | length // 0')
-            LICENSES=$(echo "$RESULT" | jq -r '.licenses | length // 0')
-
-            echo "  → Status: $STATUS  |  Vulnerabilities: $VULNS  |  License issues: $LICENSES"
-
-            if [ "$FIRST" = true ]; then
-              FIRST=false
-            else
-              echo "," >> xray-scan-report.json
-            fi
-
-            jq -c ". + { service: \"${service}\" }" "${service}-xray.json" >> xray-scan-report.json
-          done
-
-          echo "]" >> xray-scan-report.json
-
-          echo "Generating markdown report"
-          cat > xray-scan-report.md << EOF
-          # Xray Scan Report
-
-          Version: **${CONTAINER_VERSION}**
-          Project: **${JFROG_PROJECT}**
-
-          | Service | Status | Vulnerabilities | License Issues |
-          |---------|--------|-----------------|----------------|
-          EOF
-
-          for service in $SERVICES; do
-            STATUS=$(jq -r '.status // "unknown"' "${service}-xray.json")
-            VULNS=$(jq -r '.vulnerabilities | length // 0' "${service}-xray.json")
-            LICENSES=$(jq -r '.licenses | length // 0' "${service}-xray.json")
-
-            echo "| ${service} | ${STATUS} | ${VULNS} | ${LICENSES} |" >> xray-scan-report.md
-          done
-
-      - name: Create Xray Evidence in RLM
-        run: |
-          echo "🔐 Creating Xray evidence in RLM"
-
-          SIGNING=false
-          if [[ -n "${{ secrets.PRIVATE_KEY }}" ]]; then
-            SIGNING=true
-            echo "${{ secrets.PRIVATE_KEY }}" > xray.key
-          fi
-
-          SERVICES="spring-petclinic-cloud-api-gateway spring-petclinic-cloud-visits-service spring-petclinic-cloud-vets-service spring-petclinic-cloud-customers-service spring-petclinic-cloud-admin-server spring-petclinic-cloud-discovery-service spring-petclinic-cloud-config-server"
-
-          for service in $SERVICES; do
-            echo "📦 Publishing Xray evidence for ${service}:${CONTAINER_VERSION}"
-
-            jf evd create-evidence \
-              --predicate=xray-scan-report.json \
-              --predicate-type=https://jfrog.com/evidence/xray-scan/v1 \
-              --package-name "${service}" \
-              --package-version "${CONTAINER_VERSION}" \
-              --package-repo-name dev-oci-local \
-              --markdown xray-scan-report.md \
-              $([[ "$SIGNING" == "true" ]] && echo "--key xray.key --key-alias '${{ secrets.KEY_ALIAS }}'") \
-              --project=${JFROG_PROJECT} \
-              || echo "⚠️ Failed to publish evidence for ${service}"
-          done
-
-          echo "✅ Xray evidence complete"
+      - name: Upload Xray Scan Results
+        uses: actions/upload-artifact@v4
+        with:
+          name: xray-scan-${{ inputs.build_number }}
+          path: xray-result.json

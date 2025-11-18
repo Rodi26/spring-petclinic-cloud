@@ -2,64 +2,127 @@ name: Java CI with Maven (Modular Orchestrator)
 
 on:
   push:
-    branches: [ master ]
-  pull_request:
-    branches: [ master ]
-  schedule:
-    - cron: "0 0 * * *"
-
-permissions:
-  actions: read
-  id-token: write
-  contents: read
-  packages: write
-  security-events: write
+    branches: [ "master" ]
+  workflow_dispatch:
 
 jobs:
-
   build:
-    name: Build
+    name: Build (Reusable Workflow)
     uses: ./.github/workflows/build-reusable.yml
     with:
       jfrog_project: ${{ vars.JFROG_PROJECT }}
+    secrets:
+      JF_URL: ${{ secrets.JF_URL }}
+      JF_ACCESS_TOKEN: ${{ secrets.JF_ACCESS_TOKEN }}
+      ORAS_TOKEN: ${{ secrets.ORAS_TOKEN }}
+      ORAS_USERNAME: ${{ secrets.ORAS_USERNAME }}
+
+  xray:
+    name: Xray Scan
+    needs: build
+    uses: ./.github/workflows/xray-scan.yml
+    with:
+      build_name: "Java CI with Maven (Modular Orchestrator)"
+      build_number: ${{ github.run_number }}
+      jfrog_project: ${{ vars.JFROG_PROJECT }}
     secrets: inherit
 
-  slsa-container-provenance:
-    name: SLSA Container Provenance
+  ## --- SLSA provenance for each service ---
+  slsa_api_gateway:
+    name: SLSA Provenance (API Gateway)
     needs: build
     uses: ./.github/workflows/slsa-container-provenance.yml
     with:
-      image: ${{ needs.build.outputs.image }}
-      digest: ${{ needs.build.outputs.digest }}
-      registry_username: "admin"
-    secrets:
-      ORAS_TOKEN: ${{ secrets.ORAS_TOKEN }}
-
-  rlm-evidence:
-    name: RLM Evidence Integration
-    needs: [build, slsa-container-provenance]
-    uses: ./.github/workflows/rlm-evidence.yml
-    with:
-      image: ${{ needs.build.outputs.image }}
-      digest: ${{ needs.build.outputs.digest }}
-      container_version: ${{ needs.build.outputs.container_version }}
-      slsa_success: ${{ needs.slsa-container-provenance.result == 'success' }}
+      image:  ${{ needs.build.outputs.image_api_gateway }}
+      digest: ${{ needs.build.outputs.digest_api_gateway }}
     secrets: inherit
 
-  xray:
-    name: Xray Scan Results
-    needs: [build, rlm-evidence]
-    if: always() && needs.build.result == 'success'
-    uses: ./.github/workflows/xray-scan.yml
+  slsa_visits:
+    name: SLSA Provenance (Visits Service)
+    needs: build
+    uses: ./.github/workflows/slsa-container-provenance.yml
     with:
-      container_version: ${{ needs.build.outputs.container_version }}
+      image:  ${{ needs.build.outputs.image_visits }}
+      digest: ${{ needs.build.outputs.digest_visits }}
+    secrets: inherit
+
+  slsa_vets:
+    name: SLSA Provenance (Vets Service)
+    needs: build
+    uses: ./.github/workflows/slsa-container-provenance.yml
+    with:
+      image:  ${{ needs.build.outputs.image_vets }}
+      digest: ${{ needs.build.outputs.digest_vets }}
+    secrets: inherit
+
+  slsa_customers:
+    name: SLSA Provenance (Customers Service)
+    needs: build
+    uses: ./.github/workflows/slsa-container-provenance.yml
+    with:
+      image:  ${{ needs.build.outputs.image_customers }}
+      digest: ${{ needs.build.outputs.digest_customers }}
+    secrets: inherit
+
+  slsa_admin:
+    name: SLSA Provenance (Admin Server)
+    needs: build
+    uses: ./.github/workflows/slsa-container-provenance.yml
+    with:
+      image:  ${{ needs.build.outputs.image_admin }}
+      digest: ${{ needs.build.outputs.digest_admin }}
+    secrets: inherit
+
+  slsa_discovery:
+    name: SLSA Provenance (Discovery Server)
+    needs: build
+    uses: ./.github/workflows/slsa-container-provenance.yml
+    with:
+      image:  ${{ needs.build.outputs.image_discovery }}
+      digest: ${{ needs.build.outputs.digest_discovery }}
+    secrets: inherit
+
+  slsa_config:
+    name: SLSA Provenance (Config Server)
+    needs: build
+    uses: ./.github/workflows/slsa-container-provenance.yml
+    with:
+      image:  ${{ needs.build.outputs.image_config }}
+      digest: ${{ needs.build.outputs.digest_config }}
+    secrets: inherit
+
+  promote:
+    name: Promote Build
+    needs:
+      - build
+      - xray
+      - slsa_api_gateway
+      - slsa_visits
+      - slsa_vets
+      - slsa_customers
+      - slsa_admin
+      - slsa_discovery
+      - slsa_config
+    uses: ./.github/workflows/promote.yml
+    with:
+      version: ${{ needs.build.outputs.version }}
+      jfrog_project: ${{ vars.JFROG_PROJECT }}
     secrets: inherit
 
   release_bundle:
-    name: Release Bundle for RLM
-    needs: [build, xray]
-    if: always() && needs.build.result == 'success'
+    name: Create Release Bundle
+    needs: promote
     uses: ./.github/workflows/release-bundle.yml
     with:
-      container_version: ${{ needs.build.outputs.container_version }}
+      version: ${{ needs.build.outputs.version }}
+      jfrog_project: ${{ vars.JFROG_PROJECT }}
+    secrets: inherit
+
+  rlm_evidence:
+    name: Generate Evidence RLM
+    needs: release_bundle
+    uses: ./.github/workflows/rlm-evidence.yml
+    with:
+      version: ${{ needs.build.outputs.version }}
+      jfrog_project: ${{ vars.JFROG_PROJECT }}
     secrets: inherit

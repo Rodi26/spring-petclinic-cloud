@@ -1,220 +1,67 @@
-name: RLM Evidence Integration (reusable)
+name: Generate RLM Evidence
 
 on:
   workflow_call:
     inputs:
-      image:
+      jfrog_project:
         required: true
         type: string
-      digest:
+      build_name:
         required: true
         type: string
-      container_version:
+      build_number:
         required: true
         type: string
-      slsa_success:
-        required: false
-        type: boolean
-        default: true
     secrets:
       JF_URL:
         required: true
       JF_ACCESS_TOKEN:
         required: true
-      PRIVATE_KEY:
-        required: false
-      KEY_ALIAS:
-        required: false
 
 jobs:
-  integrate-slsa-with-rlm:
+  rlm-evidence:
+    name: Generate Release Lifecycle Evidence
     runs-on: ubuntu-latest
+
     env:
-      JFROG_PROJECT: ${{ vars.JFROG_PROJECT }}
-      CONTAINER_VERSION: ${{ inputs.container_version }}
+      JFROG_PROJECT: ${{ inputs.jfrog_project }}
+      BUILD_NAME: ${{ inputs.build_name }}
+      BUILD_NUMBER: ${{ inputs.build_number }}
 
     steps:
+
       - name: Setup JFrog CLI
         uses: jfrog/setup-jfrog-cli@v4
         env:
           JF_URL: ${{ secrets.JF_URL }}
           JF_ACCESS_TOKEN: ${{ secrets.JF_ACCESS_TOKEN }}
 
-      - name: Configure JFrog CLI
+      - name: Collect build evidence from JFrog
+        id: evidence
         run: |
-          jf mvnc \
-            --repo-deploy-releases=${{ vars.MVN_DEV_REPO_DEPLOY_RELEASES }} \
-            --repo-deploy-snapshots=${{ vars.MVN_DEV_REPO_DEPLOY_SNAPSHOTS }} \
-            --repo-resolve-releases=${{ vars.MVN_DEV_REPO_RESOLVE_RELEASES }} \
-            --repo-resolve-snapshots=${{ vars.MVN_DEV_REPO_RESOLVE_SNAPSHOTS }}
+          echo "▶ Collecting evidence for build:"
+          echo "  - Name:   $BUILD_NAME"
+          echo "  - Number: $BUILD_NUMBER"
+          echo "  - Project: $JFROG_PROJECT"
 
-      - name: Collect SLSA Provenance
-        run: |
-          echo "🔍 Collecting SLSA provenance evidence"
+          # Evidence JSON file path
+          EVIDENCE_FILE="evidence-${BUILD_NAME}-${BUILD_NUMBER}.json"
 
-          MAIN_SERVICE="spring-petclinic-cloud-api-gateway"
-          IMAGE_REF="artifactory.rodolphef.org/dev-oci-local/${MAIN_SERVICE}:${CONTAINER_VERSION}"
+          jf build-evidence-collect "$BUILD_NAME" "$BUILD_NUMBER" \
+            --format=json \
+            --project="$JFROG_PROJECT" \
+            > "$EVIDENCE_FILE"
 
-          jf rt curl -X GET "/api/docker/dev-oci-local/v2/${MAIN_SERVICE}/manifests/${CONTAINER_VERSION}" \
-            -H "Accept: application/vnd.oci.image.manifest.v1+json" > slsa-manifest.json || echo "{}" > slsa-manifest.json
-
-          echo "Generating SLSA provenance predicate JSON"
-
-          cat > slsa_provenance_evidence.json << EOF
-          {
-            "slsa_provenance": {
-              "version": "v1.0",
-              "build_type": "https://github.com/slsa-framework/slsa-github-generator/container@v2.0.0",
-              "builder": {
-                "id": "https://github.com/slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v2.0.0"
-              },
-              "invocation": {
-                "config_source": {
-                  "uri": "${{ github.server_url }}/${{ github.repository }}",
-                  "digest": { "sha1": "${{ github.sha }}" }
-                }
-              },
-              "metadata": {
-                "build_started_on": "${{ github.event.head_commit.timestamp }}",
-                "build_finished_on": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-                "reproducible": false,
-                "completeness": { "parameters": true, "environment": true, "materials": true }
-              },
-              "materials": [
-                {
-                  "uri": "${{ github.server_url }}/${{ github.repository }}",
-                  "digest": { "sha1": "${{ github.sha }}" }
-                }
-              ]
-            },
-            "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-            "build_number": "${{ github.run_number }}",
-            "version": "${CONTAINER_VERSION}"
-          }
-          EOF
-
-          echo "Generating markdown summary"
-
-          cat > slsa-provenance-results.md << EOF
-          # SLSA Provenance Evidence
-
-          **Repository:** ${{ github.repository }}  
-          **Commit:** ${{ github.sha }}  
-          **Build Number:** ${{ github.run_number }}  
-          **Version:** ${CONTAINER_VERSION}
-
-          This evidence confirms SLSA v3 provenance for all microservices built in this CI run.
-          EOF
-
-      - name: Create SLSA Evidence in RLM
-        run: |
-          if [[ "${{ inputs.slsa_success }}" != "true" ]]; then
-            echo "⚠️ SLSA provenance missing, skipping evidence creation."
-            exit 0
+          if [[ ! -s "$EVIDENCE_FILE" ]]; then
+            echo "⚠ No evidence collected!"
+          else
+            echo "✔ Evidence collected: $EVIDENCE_FILE"
           fi
 
-          SIGNING_ENABLED=false
-          if [[ -n "${{ secrets.PRIVATE_KEY }}" ]]; then
-            echo "${{ secrets.PRIVATE_KEY }}" > evidence.key
-            SIGNING_ENABLED=true
-          fi
+          echo "file=$EVIDENCE_FILE" >> $GITHUB_OUTPUT
 
-          for service in spring-petclinic-cloud-api-gateway spring-petclinic-cloud-visits-service spring-petclinic-cloud-vets-service spring-petclinic-cloud-customers-service spring-petclinic-cloud-admin-server spring-petclinic-cloud-discovery-service spring-petclinic-cloud-config-server; do
-
-            echo "📦 Publishing SLSA evidence for ${service}:${CONTAINER_VERSION}"
-
-            jf evd create-evidence \
-              --predicate=slsa_provenance_evidence.json \
-              --predicate-type=https://slsa.dev/provenance/v1 \
-              --package-name "${service}" \
-              --package-version "${CONTAINER_VERSION}" \
-              --package-repo-name dev-oci-local \
-              --markdown slsa-provenance-results.md \
-              $([[ "$SIGNING_ENABLED" == "true" ]] && echo "--key evidence.key --key-alias '${{ secrets.KEY_ALIAS }}'") \
-              --project=${{ vars.JFROG_PROJECT }} \
-              || echo "⚠️ Evidence failed for ${service}"
-
-          done
-
-      - name: Create GitHub Actions Execution Evidence
-        run: |
-          echo "Generating GitHub Actions execution evidence"
-
-          cat > github_actions_evidence.json << EOF
-          {
-            "github_actions": {
-              "repository": "${{ github.repository }}",
-              "commit_sha": "${{ github.sha }}",
-              "workflow": "${{ github.workflow }}",
-              "run_id": "${{ github.run_id }}",
-              "run_number": "${{ github.run_number }}",
-              "actor": "${{ github.actor }}",
-              "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-            }
-          }
-          EOF
-
-          cat > github-actions-results.md << EOF
-          # GitHub Actions Execution Evidence
-
-          - **Repository:** ${{ github.repository }}
-          - **Commit SHA:** ${{ github.sha }}
-          - **Workflow:** ${{ github.workflow }}
-          - **Run ID:** ${{ github.run_id }}
-          - **Run Number:** ${{ github.run_number }}
-          - **Actor:** ${{ github.actor }}
-          - **Timestamp:** $(date -u +%Y-%m-%dT%H:%M:%SZ)
-          EOF
-
-          for service in spring-petclinic-cloud-*; do
-            jf evd create-evidence \
-              --predicate=github_actions_evidence.json \
-              --predicate-type=https://jfrog.com/evidence/github-actions/v1 \
-              --package-name "${service}" \
-              --package-version "${CONTAINER_VERSION}" \
-              --package-repo-name dev-oci-local \
-              --markdown github-actions-results.md \
-              --project=${{ vars.JFROG_PROJECT }} \
-              || echo "⚠️ Failed to publish GitHub Actions evidence for ${service}"
-          done
-
-      - name: Generate GitHub Attestations
-        uses: actions/attest-build-provenance@v1
+      - name: Upload Evidence as Artifact
+        uses: actions/upload-artifact@v4
         with:
-          subject-name: ${{ inputs.image }}
-          subject-digest: ${{ inputs.digest }}
-          push-to-registry: true
-
-      - name: Create GitHub Attestation Evidence
-        run: |
-          echo "Creating GitHub Attestation evidence"
-
-          cat > github_attestation_evidence.json << EOF
-          {
-            "attestation": {
-              "image": "${{ inputs.image }}",
-              "digest": "${{ inputs.digest }}",
-              "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-            }
-          }
-          EOF
-
-          cat > github-attestation-results.md << EOF
-          # GitHub Attestation Evidence
-
-          - **Image:** ${{ inputs.image }}
-          - **Digest:** ${{ inputs.digest }}
-          - **Timestamp:** $(date -u +%Y-%m-%dT%H:%M:%SZ)
-          EOF
-
-          for service in spring-petclinic-cloud-*; do
-            jf evd create-evidence \
-              --predicate=github_attestation_evidence.json \
-              --package-name "${service}" \
-              --package-version "${CONTAINER_VERSION}" \
-              --package-repo-name dev-oci-local \
-              --predicate-type=https://jfrog.com/evidence/github-attestation/v1 \
-              --markdown github-attestation-results.md \
-              --project=${{ vars.JFROG_PROJECT }} \
-              || echo "⚠️ Failed to publish attestation evidence for ${service}"
-          done
+          name: rlm-evidence-${{ inputs.build_number }}
+          path: ${{ steps.evidence.outputs.file }}
