@@ -85,12 +85,6 @@ jobs:
   #######################################################
 
   slsa_api_gateway:
-    permissions:
-      id-token: write
-      contents: read
-      attestations: write
-      actions: read
-      packages: write
     needs: build
     uses: ./.github/workflows/slsa-container-provenance.yml
     with:
@@ -99,12 +93,6 @@ jobs:
     secrets: inherit
 
   slsa_visits:
-    permissions:
-      id-token: write
-      contents: read
-      attestations: write
-      actions: read
-      packages: write
     needs: build
     uses: ./.github/workflows/slsa-container-provenance.yml
     with:
@@ -113,12 +101,6 @@ jobs:
     secrets: inherit
 
   slsa_vets:
-    permissions:
-      id-token: write
-      contents: read
-      attestations: write
-      actions: read
-      packages: write
     needs: build
     uses: ./.github/workflows/slsa-container-provenance.yml
     with:
@@ -127,12 +109,6 @@ jobs:
     secrets: inherit
 
   slsa_customers:
-    permissions:
-      id-token: write
-      contents: read
-      attestations: write
-      actions: read
-      packages: write
     needs: build
     uses: ./.github/workflows/slsa-container-provenance.yml
     with:
@@ -141,12 +117,6 @@ jobs:
     secrets: inherit
 
   slsa_admin:
-    permissions:
-      id-token: write
-      contents: read
-      attestations: write
-      actions: read
-      packages: write
     needs: build
     uses: ./.github/workflows/slsa-container-provenance.yml
     with:
@@ -155,12 +125,6 @@ jobs:
     secrets: inherit
 
   slsa_discovery:
-    permissions:
-      id-token: write
-      contents: read
-      attestations: write
-      actions: read
-      packages: write
     needs: build
     uses: ./.github/workflows/slsa-container-provenance.yml
     with:
@@ -169,12 +133,6 @@ jobs:
     secrets: inherit
 
   slsa_config:
-    permissions:
-      id-token: write
-      contents: read
-      attestations: write
-      actions: read
-      packages: write
     needs: build
     uses: ./.github/workflows/slsa-container-provenance.yml
     with:
