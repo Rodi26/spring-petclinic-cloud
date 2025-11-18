@@ -9,6 +9,9 @@ on:
       digest:
         required: true
         type: string
+    secrets:
+      ORAS_TOKEN:
+        required: true
 
 permissions:
   id-token: write
@@ -24,3 +27,6 @@ jobs:
     with:
       image: ${{ inputs.image }}
       digest: ${{ inputs.digest }}
+      registry-username: admin
+      registry-password: ${{ secrets.ORAS_TOKEN }}
+      private-repository: true

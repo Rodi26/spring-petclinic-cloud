@@ -17,7 +17,12 @@ on:
         required: true
 
 permissions:
+  id-token: write
   contents: read
+  actions: read
+  packages: write
+  security-events: write
+  attestations: write
 
 jobs:
   release_bundle:

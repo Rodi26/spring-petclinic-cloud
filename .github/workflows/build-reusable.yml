@@ -13,12 +13,12 @@ on:
         required: true
 
 permissions:
-  contents: read
   id-token: write
+  contents: read
+  actions: read
+  packages: write
+  security-events: write
   attestations: write
-  actions: read # for detecting the Github Actions environment
-  packages: write # for uploading attestations
-  security-events: write # for uploading code scanning
 
 jobs:
   build:

@@ -17,12 +17,12 @@ on:
         required: true
 
 permissions:
+  id-token: write
   contents: read
   actions: read
+  packages: write
   security-events: write
-  id-token: none
-  attestations: none
-  packages: none
+  attestations: write
 
 jobs:
   rlm_evidence:
