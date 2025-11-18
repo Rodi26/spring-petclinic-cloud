@@ -103,8 +103,6 @@ jobs:
     needs: build
     uses: ./.github/workflows/slsa-container-provenance.yml
     with:
-      registry_username: ${{ secrets.REGISTRY_USERNAME }}
-      registry_password: ${{ secrets.ORAS_TOKEN }}
       image: ${{ needs.build.outputs.image }}
       digest: ${{ needs.build.outputs.digest }}
     secrets:
