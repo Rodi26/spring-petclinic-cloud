@@ -105,6 +105,3 @@ jobs:
     with:
       image: ${{ needs.build.outputs.image }}
       digest: ${{ needs.build.outputs.digest }}
-    secrets:
-      registry-password: ${{ secrets.ORAS_TOKEN }}
-      registry-username: ${{ secrets.REGISTRY_USERNAME }}
