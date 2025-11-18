@@ -1,0 +1,12 @@
+name: Test RLM Evidence
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test-rlm:
+    uses: ./.github/workflows/rlm-evidence.yml
+    with:
+      version: "2.6.3.360"          # par ex. une version qui existe déjà
+      jfrog_project: ${{ vars.JFROG_PROJECT }}
+    secrets: inherit
