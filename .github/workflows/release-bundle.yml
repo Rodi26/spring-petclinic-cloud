@@ -5,16 +5,12 @@ on:
     inputs:
       jfrog_project:
         required: true
-        type: string
       version:
         required: true
-        type: string
       image:
         required: true
-        type: string
       digest:
         required: true
-        type: string
     secrets:
       JF_URL:
         required: true
@@ -22,54 +18,27 @@ on:
         required: true
 
 jobs:
-  create-release-bundle:
-    name: Create Release Bundle v2
+  rb:
     runs-on: ubuntu-latest
 
-    env:
-      JFROG_PROJECT: ${{ inputs.jfrog_project }}
-      RB_NAME: spring-petclinic-cloud
-      RB_VERSION: ${{ inputs.version }}
-      IMAGE: ${{ inputs.image }}
-      DIGEST: ${{ inputs.digest }}
-
     steps:
-
-      - name: Setup JFrog CLI
-        uses: jfrog/setup-jfrog-cli@v4
+      - uses: jfrog/setup-jfrog-cli@v4
         env:
           JF_URL: ${{ secrets.JF_URL }}
           JF_ACCESS_TOKEN: ${{ secrets.JF_ACCESS_TOKEN }}
 
-      - name: Display artifact info
+      - name: Create Release Bundle V2
         run: |
-          echo "Release Bundle: $RB_NAME"
-          echo "Version:       $RB_VERSION"
-          echo "Image:         $IMAGE"
-          echo "Digest:        $DIGEST"
-          echo "Project:       $JFROG_PROJECT"
-
-      - name: Create Release Bundle v2
-        run: |
-          jf release-bundle-create "$RB_NAME" "$RB_VERSION" \
+          jf release-bundle-create "spring-petclinic-cloud" "${{ inputs.version }}" \
             --signing-key=default \
-            --project="$JFROG_PROJECT" \
+            --project="${{ inputs.jfrog_project }}" \
             --spec=- <<EOF
           {
             "files": [
               {
-                "pattern": "${IMAGE}@${DIGEST}",
+                "pattern": "${{ inputs.image }}@${{ inputs.digest }}",
                 "target": "release-bundles/"
               }
             ]
           }
           EOF
-
-      - name: Distribute Release Bundle (optional)
-        if: ${{ vars.DISTRIBUTION_ENABLED == 'true' }}
-        run: |
-          jf release-bundle-distribute "$RB_NAME" "$RB_VERSION" \
-            --site="default" \
-            --project="$JFROG_PROJECT"
-
-          echo "Release Bundle distributed."

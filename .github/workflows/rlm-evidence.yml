@@ -5,13 +5,10 @@ on:
     inputs:
       jfrog_project:
         required: true
-        type: string
       build_name:
         required: true
-        type: string
       build_number:
         required: true
-        type: string
     secrets:
       JF_URL:
         required: true
@@ -19,49 +16,25 @@ on:
         required: true
 
 jobs:
-  rlm-evidence:
-    name: Generate Release Lifecycle Evidence
+  evidence:
     runs-on: ubuntu-latest
 
-    env:
-      JFROG_PROJECT: ${{ inputs.jfrog_project }}
-      BUILD_NAME: ${{ inputs.build_name }}
-      BUILD_NUMBER: ${{ inputs.build_number }}
-
     steps:
-
-      - name: Setup JFrog CLI
-        uses: jfrog/setup-jfrog-cli@v4
+      - uses: jfrog/setup-jfrog-cli@v4
         env:
           JF_URL: ${{ secrets.JF_URL }}
           JF_ACCESS_TOKEN: ${{ secrets.JF_ACCESS_TOKEN }}
 
-      - name: Collect build evidence from JFrog
-        id: evidence
+      - name: Collect RLM Evidence
         run: |
-          echo "▶ Collecting evidence for build:"
-          echo "  - Name:   $BUILD_NAME"
-          echo "  - Number: $BUILD_NUMBER"
-          echo "  - Project: $JFROG_PROJECT"
-
-          # Evidence JSON file path
-          EVIDENCE_FILE="evidence-${BUILD_NAME}-${BUILD_NUMBER}.json"
-
-          jf build-evidence-collect "$BUILD_NAME" "$BUILD_NUMBER" \
+          jf build-evidence-collect \
+            "${{ inputs.build_name }}" \
+            "${{ inputs.build_number }}" \
             --format=json \
-            --project="$JFROG_PROJECT" \
-            > "$EVIDENCE_FILE"
+            --project="${{ inputs.jfrog_project }}" \
+            > evidence.json
 
-          if [[ ! -s "$EVIDENCE_FILE" ]]; then
-            echo "⚠ No evidence collected!"
-          else
-            echo "✔ Evidence collected: $EVIDENCE_FILE"
-          fi
-
-          echo "file=$EVIDENCE_FILE" >> $GITHUB_OUTPUT
-
-      - name: Upload Evidence as Artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: rlm-evidence-${{ inputs.build_number }}
-          path: ${{ steps.evidence.outputs.file }}
+          path: evidence.json

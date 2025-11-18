@@ -23,31 +23,21 @@ on:
 
 jobs:
   promote:
-    name: Promote Build Artifacts
     runs-on: ubuntu-latest
 
-    env:
-      JFROG_PROJECT: ${{ inputs.jfrog_project }}
-      TARGET_REPO: ${{ inputs.target_repo }}
-
     steps:
-      - name: Setup JFrog CLI
-        uses: jfrog/setup-jfrog-cli@v4
+
+      - uses: jfrog/setup-jfrog-cli@v4
         env:
           JF_URL: ${{ secrets.JF_URL }}
           JF_ACCESS_TOKEN: ${{ secrets.JF_ACCESS_TOKEN }}
 
-      - name: Promote Build
+      - name: Promote Build Artifacts
         run: |
-          echo "▶ Promoting build: ${{ inputs.build_name }} #${{ inputs.build_number }}"
-          echo "▶ Target repo: $TARGET_REPO"
-
           jf rt build-promote \
             "${{ inputs.build_name }}" \
             "${{ inputs.build_number }}" \
-            "$TARGET_REPO" \
-            --comment="Automated Promotion - GitHub Actions" \
+            "${{ inputs.target_repo }}" \
             --copy=true \
-            --project="${JFROG_PROJECT}"
-
-          echo "✔ Build promoted successfully."
+            --comment="Automated Promotion" \
+            --project="${{ inputs.jfrog_project }}"

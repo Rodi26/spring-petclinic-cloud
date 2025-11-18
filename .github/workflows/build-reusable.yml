@@ -16,44 +16,28 @@ on:
       ORAS_USERNAME:
         required: true
 
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
   build:
     name: Build & Publish Artifacts
     runs-on: ubuntu-latest
 
     outputs:
-      version: ${{ steps.extract.outputs.version }}
-
-      image_api_gateway: ${{ steps.push.outputs.image_api_gateway }}
-      digest_api_gateway: ${{ steps.push.outputs.digest_api_gateway }}
-
-      image_visits:     ${{ steps.push.outputs.image_visits }}
-      digest_visits:    ${{ steps.push.outputs.digest_visits }}
-
-      image_vets:       ${{ steps.push.outputs.image_vets }}
-      digest_vets:      ${{ steps.push.outputs.digest_vets }}
-
-      image_customers:  ${{ steps.push.outputs.image_customers }}
-      digest_customers: ${{ steps.push.outputs.digest_customers }}
-
-      image_admin:      ${{ steps.push.outputs.image_admin }}
-      digest_admin:     ${{ steps.push.outputs.digest_admin }}
-
-      image_discovery:  ${{ steps.push.outputs.image_discovery }}
-      digest_discovery: ${{ steps.push.outputs.digest_discovery }}
-
-      image_config:     ${{ steps.push.outputs.image_config }}
-      digest_config:    ${{ steps.push.outputs.digest_config }}
+      image: ${{ steps.docker-push.outputs.image }}
+      digest: ${{ steps.docker-push.outputs.digest }}
+      container_version: ${{ steps.extract.outputs.version }}
 
     env:
       JFROG_PROJECT: ${{ inputs.jfrog_project }}
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
 
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
@@ -67,80 +51,63 @@ jobs:
       - name: Configure Maven with JFrog
         run: |
           jf mvnc \
-            --repo-resolve-releases="${{ vars.MVN_DEV_REPO_RESOLVE_RELEASES }}" \
-            --repo-resolve-snapshots="${{ vars.MVN_DEV_REPO_RESOLVE_SNAPSHOTS }}" \
-            --repo-deploy-releases="${{ vars.MVN_DEV_REPO_DEPLOY_RELEASES }}" \
-            --repo-deploy-snapshots="${{ vars.MVN_DEV_REPO_DEPLOY_SNAPSHOTS }}"
+            --repo-resolve-releases=${{ vars.MVN_DEV_REPO_RESOLVE_RELEASES }} \
+            --repo-resolve-snapshots=${{ vars.MVN_DEV_REPO_RESOLVE_SNAPSHOTS }} \
+            --repo-deploy-releases=${{ vars.MVN_DEV_REPO_DEPLOY_RELEASES }} \
+            --repo-deploy-snapshots=${{ vars.MVN_DEV_REPO_DEPLOY_SNAPSHOTS }}
 
-      - name: Build Maven project (JARs)
+      - name: Build Maven project
         run: jf mvn clean install -DskipTests
 
       - name: Extract version
         id: extract
         run: |
           VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
-          VERSION="${VERSION/-SNAPSHOT/}"
+          VERSION=${VERSION/-SNAPSHOT/}
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-      - name: Install ORAS CLI
+      - name: Install ORAS
         run: |
-          VERSION=$(curl -s https://api.github.com/repos/oras-project/oras/releases/latest | jq -r '.tag_name')
-          FILE="oras_${VERSION#v}_linux_amd64.tar.gz"
-          curl -sSL "https://github.com/oras-project/oras/releases/download/${VERSION}/${FILE}" -o "$FILE"
-          tar -xzf "$FILE" oras
+          VER=$(curl -s https://api.github.com/repos/oras-project/oras/releases/latest | jq -r ".tag_name")
+          FILE="oras_${VER#v}_linux_amd64.tar.gz"
+          curl -sSL "https://github.com/oras-project/oras/releases/download/${VER}/${FILE}" -o "$FILE"
+          tar -xzf "$FILE"
           sudo mv oras /usr/local/bin/
           oras version
 
-      - name: Login ORAS
+      - name: ORAS login
         run: |
           echo "${{ secrets.ORAS_TOKEN }}" | oras login ${{ vars.OCI_REGISTRY_URL }} \
-            --username "${{ secrets.ORAS_USERNAME }}" \
-            --password-stdin
+            --username ${{ secrets.ORAS_USERNAME }} --password-stdin
 
-      - name: Build container images
+      - name: Build OCI images
         env:
-          PREFIX: ${{ vars.OCI_REGISTRY_URL }}/${{ vars.DOCKER_DEV_REPO }}
+          REPOSITORY_PREFIX: ${{ vars.OCI_REGISTRY_URL }}/${{ vars.DOCKER_DEV_REPO }}
         run: |
           jf mvn -B -DskipTests=true spring-boot:build-image -Pk8s \
-            -DREPOSITORY_PREFIX="${PREFIX}" \
-            -DVERSION="${{ steps.extract.outputs.version }}" \
-            --project "${JFROG_PROJECT}"
+            -DREPOSITORY_PREFIX=$REPOSITORY_PREFIX \
+            -DVERSION=${{ steps.extract.outputs.version }} \
+            --project "${{ inputs.jfrog_project }}"
 
-      - name: Push images
-        id: push
+      - name: Push OCI images
+        id: docker-push
         env:
           PREFIX: ${{ vars.OCI_REGISTRY_URL }}/${{ vars.DOCKER_DEV_REPO }}
-          VERSION: ${{ steps.extract.outputs.version }}
         run: |
-          declare -A MAP=(
-            ["api_gateway"]="spring-petclinic-cloud-api-gateway"
-            ["visits"]="spring-petclinic-cloud-visits-service"
-            ["vets"]="spring-petclinic-cloud-vets-service"
-            ["customers"]="spring-petclinic-cloud-customers-service"
-            ["admin"]="spring-petclinic-cloud-admin-server"
-            ["discovery"]="spring-petclinic-cloud-discovery-service"
-            ["config"]="spring-petclinic-cloud-config-server"
-          )
-
-          for KEY in "${!MAP[@]}"; do
-            SERVICE="${MAP[$KEY]}"
-            IMAGE="${PREFIX}/${SERVICE}:${VERSION}"
-
-            jf docker push "$IMAGE" --project "${JFROG_PROJECT}"
-
-            DIGEST=$(jf rt curl -X GET "/api/docker/${{ vars.DOCKER_DEV_REPO }}/v2/${SERVICE}/manifests/${VERSION}" \
-              -H "Accept: application/vnd.docker.distribution.manifest.v2+json" \
-              | jq -r '.config.digest // empty')
-
-            if [[ -z "$DIGEST" ]]; then
-              DIGEST="sha256:$(echo "$SERVICE:$VERSION:${GITHUB_RUN_NUMBER}:${GITHUB_SHA}" | sha256sum | cut -d' ' -f1)"
-            fi
-
-            echo "image_${KEY}=${PREFIX}/${SERVICE}" >> $GITHUB_OUTPUT
-            echo "digest_${KEY}=${DIGEST}" >> $GITHUB_OUTPUT
+          for service in spring-petclinic-cloud-api-gateway spring-petclinic-cloud-visits-service spring-petclinic-cloud-vets-service spring-petclinic-cloud-customers-service spring-petclinic-cloud-admin-server spring-petclinic-cloud-discovery-service spring-petclinic-cloud-config-server; do
+            jf docker push $PREFIX/${service}:${{ steps.extract.outputs.version }} \
+              --project "${{ inputs.jfrog_project }}"
           done
 
-      - name: Publish Build-info
+          MAIN="spring-petclinic-cloud-api-gateway"
+
+          DIGEST=$(jf rt curl -X GET "/api/docker/${{ vars.DOCKER_DEV_REPO }}/v2/$MAIN/manifests/${{ steps.extract.outputs.version }}" \
+            -H "Accept: application/vnd.docker.distribution.manifest.v2+json" | jq -r '.config.digest')
+
+          echo "image=$PREFIX/$MAIN" >> $GITHUB_OUTPUT
+          echo "digest=$DIGEST" >> $GITHUB_OUTPUT
+
+      - name: Publish build-info
         run: |
           jf rt bce --project "$JFROG_PROJECT"
           jf rt bag --project "$JFROG_PROJECT"

@@ -5,13 +5,10 @@ on:
     inputs:
       jfrog_project:
         required: true
-        type: string
       build_name:
         required: true
-        type: string
       build_number:
         required: true
-        type: string
     secrets:
       JF_URL:
         required: true
@@ -19,44 +16,26 @@ on:
         required: true
 
 jobs:
-  xray-scan:
-    name: Xray Build Scan
+  xray:
     runs-on: ubuntu-latest
-
-    env:
-      JFROG_PROJECT: ${{ inputs.jfrog_project }}
-      BUILD_NAME: ${{ inputs.build_name }}
-      BUILD_NUMBER: ${{ inputs.build_number }}
 
     steps:
 
-      - name: Setup JFrog CLI
-        uses: jfrog/setup-jfrog-cli@v4
+      - uses: jfrog/setup-jfrog-cli@v4
         env:
           JF_URL: ${{ secrets.JF_URL }}
           JF_ACCESS_TOKEN: ${{ secrets.JF_ACCESS_TOKEN }}
 
-      - name: Run Xray Scan
-        id: xray
+      - name: Xray Scan Build
         run: |
-          echo "▶ Running Xray scan for build:"
-          echo "  - Name:   $BUILD_NAME"
-          echo "  - Number: $BUILD_NUMBER"
-          echo "  - Project: $JFROG_PROJECT"
-
-          # Scan the build
-          # Note: This command FAILS only if a “Fail build” rule is triggered.
           jf build-scan \
-            "$BUILD_NAME" \
-            "$BUILD_NUMBER" \
-            --project="$JFROG_PROJECT" \
-            --format=json > xray-result.json
+            "${{ inputs.build_name }}" \
+            "${{ inputs.build_number }}" \
+            --format=json \
+            --project="${{ inputs.jfrog_project }}" \
+            > xray.json
 
-          echo "✔ Xray scan completed. Results saved to xray-result.json"
-          echo "file=xray-result.json" >> $GITHUB_OUTPUT
-
-      - name: Upload Xray Scan Results
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: xray-scan-${{ inputs.build_number }}
-          path: xray-result.json
+          path: xray.json
