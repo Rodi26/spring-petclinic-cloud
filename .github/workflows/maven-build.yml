@@ -98,12 +98,12 @@ jobs:
           jf rt bp --project "${{ vars.JFROG_PROJECT }}"
 
   container-provenance:
-    name: SLSA Container Provenance
-    needs: build
-    uses: ./.github/workflows/slsa-container-provenance.yml
-    with:
-      image: ${{ needs.build.outputs.image }}
-      digest: ${{ needs.build.outputs.digest }}
-      registry_username: ${{ secrets.ORAS_USERNAME }}
-    secrets:
-      ORAS_TOKEN: ${{ secrets.ORAS_TOKEN }}
+      name: SLSA Container Provenance
+      needs: build
+      uses: ./.github/workflows/slsa-container-provenance.yml
+      with:
+        image: ${{ needs.build.outputs.image }}
+        digest: ${{ needs.build.outputs.digest }}
+      secrets:
+        ORAS_TOKEN: ${{ secrets.ORAS_TOKEN }}
+        ORAS_USERNAME: ${{ secrets.ORAS_USERNAME }}

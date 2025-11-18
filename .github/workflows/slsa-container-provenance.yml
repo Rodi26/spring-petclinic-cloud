@@ -9,12 +9,10 @@ on:
       digest:
         required: true
         type: string
-      registry_username:
-        required: false
-        type: string
-        default: ''
     secrets:
       ORAS_TOKEN:
+        required: true
+      ORAS_USERNAME:
         required: true
 
 permissions:
@@ -31,7 +29,7 @@ jobs:
     with:
       image: ${{ inputs.image }}
       digest: ${{ inputs.digest }}
-      registry-username: ${{ inputs.registry_username || github.actor }}
+      registry-username: ${{ secrets.ORAS_USERNAME }}
       private-repository: true
     secrets:
       registry-password: ${{ secrets.ORAS_TOKEN }}
