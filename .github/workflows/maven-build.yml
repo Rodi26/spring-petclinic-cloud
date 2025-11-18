@@ -97,3 +97,11 @@ jobs:
           jf rt bce --project "${{ vars.JFROG_PROJECT }}"
           jf rt bag --project "${{ vars.JFROG_PROJECT }}"
           jf rt bp  --project "${{ vars.JFROG_PROJECT }}"
+
+  container-provenance:
+    name: SLSA Container Provenance
+    needs: build
+    uses: ./.github/workflows/slsa-container-provenance.yml
+    with:
+      image: ${{ needs.build.outputs.image }}
+      digest: ${{ needs.build.outputs.digest }}
