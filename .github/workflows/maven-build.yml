@@ -21,6 +21,9 @@ jobs:
   build:
     name: Build & Publish
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        java: [ '11' ]
 
     outputs:
       image: ${{ steps.metadata.outputs.image }}
