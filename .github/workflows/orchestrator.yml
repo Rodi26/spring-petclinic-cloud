@@ -6,14 +6,18 @@ on:
       version:
         description: "Version à déployer"
         required: true
+        type: string
         default: "2.6.3"
+
       jfrog_project:
         description: "JFrog Project"
         required: true
+        type: string
         default: "demo-1"
       environment:
         description: "Environnement (dev / staging / prod)"
         required: true
+        type: string
         default: "dev"
 
 jobs:
