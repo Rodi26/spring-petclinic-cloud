@@ -11,9 +11,12 @@ on:
         type: string
 
 permissions:
-  id-token: write
   contents: read
+  id-token: write
   attestations: write
+  actions: read # for detecting the Github Actions environment
+  packages: write # for uploading attestations
+  security-events: write # for uploading code scanning
 
 jobs:
   provenance:

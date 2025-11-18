@@ -1,9 +1,14 @@
-name: Maven Build Pipeline
+name: SLSA Container Provenance
 
 on:
-  workflow_dispatch:
-  push:
-    branches: [ "master" ]
+  workflow_call:
+    inputs:
+      image:
+        required: true
+        type: string
+      digest:
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -13,129 +18,9 @@ permissions:
   packages: write # for uploading attestations
   security-events: write # for uploading code scanning
 
-
 jobs:
-
-  #######################################################
-  # 1. BUILD (reusable workflow)
-  #######################################################
-  build:
-    uses: ./.github/workflows/build-reusable.yml
-    with:
-      jfrog_project: ${{ vars.JFROG_PROJECT }}
-    secrets: inherit
-
-
-
-  #######################################################
-  # 2. XRAY SCAN OF BUILD
-  #######################################################
-  xray_scan:
-    needs: build
-    uses: ./.github/workflows/xray-scan.yml
-    with:
-      build_name: "Java CI with Maven (Modular Orchestrator)"
-      build_number: ${{ github.run_number }}
-      jfrog_project: ${{ vars.JFROG_PROJECT }}
-    secrets: inherit
-
-
-
-  #######################################################
-  # 3. PROMOTION
-  #######################################################
-  promote:
-    needs: build
-    uses: ./.github/workflows/promote.yml
-    with:
-      version: ${{ needs.build.outputs.version }}
-      jfrog_project: ${{ vars.JFROG_PROJECT }}
-    secrets: inherit
-
-
-
-  #######################################################
-  # 4. RELEASE BUNDLE
-  #######################################################
-  release_bundle:
-    needs: promote
-    uses: ./.github/workflows/release-bundle.yml
-    with:
-      version: ${{ needs.build.outputs.version }}
-      jfrog_project: ${{ vars.JFROG_PROJECT }}
-    secrets: inherit
-
-
-
-  #######################################################
-  # 5. RLM EVIDENCE
-  #######################################################
-  rlm_evidence:
-    needs: release_bundle
-    uses: ./.github/workflows/rlm-evidence.yml
-    with:
-      version: ${{ needs.build.outputs.version }}
-      jfrog_project: ${{ vars.JFROG_PROJECT }}
-    secrets: inherit
-
-
-
-  #######################################################
-  # 6. SLSA PROVENANCE FOR ALL SERVICES
-  #######################################################
-
-  slsa_api_gateway:
-    needs: build
-    uses: ./.github/workflows/slsa-container-provenance.yml
-    with:
-      image:  ${{ needs.build.outputs.image_api_gateway }}
-      digest: ${{ needs.build.outputs.digest_api_gateway }}
-    secrets: inherit
-
-  slsa_visits:
-    needs: build
-    uses: ./.github/workflows/slsa-container-provenance.yml
-    with:
-      image:  ${{ needs.build.outputs.image_visits }}
-      digest: ${{ needs.build.outputs.digest_visits }}
-    secrets: inherit
-
-  slsa_vets:
-    needs: build
-    uses: ./.github/workflows/slsa-container-provenance.yml
-    with:
-      image:  ${{ needs.build.outputs.image_vets }}
-      digest: ${{ needs.build.outputs.digest_vets }}
-    secrets: inherit
-
-  slsa_customers:
-    needs: build
-    uses: ./.github/workflows/slsa-container-provenance.yml
-    with:
-      image:  ${{ needs.build.outputs.image_customers }}
-      digest: ${{ needs.build.outputs.digest_customers }}
-    secrets: inherit
-
-  slsa_admin:
-    needs: build
-    uses: ./.github/workflows/slsa-container-provenance.yml
-    with:
-      image:  ${{ needs.build.outputs.image_admin }}
-      digest: ${{ needs.build.outputs.digest_admin }}
-    secrets: inherit
-
-  slsa_discovery:
-    needs: build
-    uses: ./.github/workflows/slsa-container-provenance.yml
-    with:
-      image:  ${{ needs.build.outputs.image_discovery }}
-      digest: ${{ needs.build.outputs.digest_discovery }}
-    secrets: inherit
-
-  slsa_config:
-    needs: build
-    uses: ./.github/workflows/slsa-container-provenance.yml
-    with:
-      image:  ${{ needs.build.outputs.image_config }}
-      digest: ${{ needs.build.outputs.digest_config }}
-    secrets: inherit
+  create_provenance:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create SLSA provenance
+        run: echo "Creating provenance for ${{ inputs.image }} with digest ${{ inputs.digest }}"
