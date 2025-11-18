@@ -69,8 +69,8 @@ jobs:
       - name: Push images
         id: push
         run: |
-          set -e
-          SERVICES="spring-petclinic-cloud-api-gateway"
+          set -euo pipefail
+          SERVICES="spring-petclinic-cloud-api-gateway spring-petclinic-cloud-visits-service spring-petclinic-cloud-vets-service spring-petclinic-cloud-customers-service spring-petclinic-cloud-admin-server spring-petclinic-cloud-discovery-service spring-petclinic-cloud-config-server"
           for S in $SERVICES; do
             jf docker push artifactory.rodolphef.org/dev-oci/$S:${VERSION} \
               --project "${{ vars.JFROG_PROJECT }}"
@@ -94,21 +94,3 @@ jobs:
           jf rt bce --project "${{ vars.JFROG_PROJECT }}"
           jf rt bag --project "${{ vars.JFROG_PROJECT }}"
           jf rt bp  --project "${{ vars.JFROG_PROJECT }}"
-
-  attest:
-    needs: build
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Generate GitHub Attestation
-        uses: actions/attest-build-provenance@v1
-        with:
-          subject-name: ${{ needs.build.outputs.image }}
-          subject-digest: ${{ needs.build.outputs.digest }}
-          push-to-registry: true
-
-      - name: Print results
-        run: |
-          echo "Image: ${{ needs.build.outputs.image }}"
-          echo "Digest: ${{ needs.build.outputs.digest }}"
-          echo "Version: ${{ needs.build.outputs.version }}"
