@@ -25,7 +25,7 @@ jobs:
     runs-on: ubuntu-latest
 
     outputs:
-      version: ${{ steps.version.outputs.container_version }}
+      version: ${{ env.CONTAINER_VERSION }}
       image:   ${{ steps.metadata.outputs.image }}
       digest:  ${{ steps.metadata.outputs.digest }}
 
