@@ -9,43 +9,44 @@ on:
       jfrog_project:
         required: true
         type: string
+
     secrets:
       JF_URL:
         required: true
       JF_ACCESS_TOKEN:
         required: true
+      RB_KEY:
+        required: false
+      PRIVATE_KEY:
+        required: false
+      KEY_ALIAS:
+        required: false
 
 permissions:
   contents: read
   id-token: write
   packages: write
-  actions: read
-  security-events: write
-  attestations: write
 
 env:
   REPOSITORY_PREFIX: dev-oci-local
   BUNDLE_NAME: spring-petclinic-cloud
+  CONTAINER_VERSION: ${{ inputs.container_version }}
+  JFROG_PROJECT: ${{ inputs.jfrog_project }}
 
 jobs:
   release_bundle:
     runs-on: ubuntu-latest
-    env:
-      CONTAINER_VERSION: ${{ inputs.container_version }}
-      JFROG_PROJECT: ${{ inputs.jfrog_project }}
 
     steps:
+
       - name: Setup JFrog CLI
         uses: jfrog/setup-jfrog-cli@v4
         env:
           JF_URL: ${{ secrets.JF_URL }}
           JF_ACCESS_TOKEN: ${{ secrets.JF_ACCESS_TOKEN }}
 
-      - name: Create Release Bundle from build-info artifacts
+      - name: Create Release Bundle spec
         run: |
-          set -euo pipefail
-          echo "Using CONTAINER_VERSION=${CONTAINER_VERSION}"
-
           cat > release-bundle-spec.json << EOF
           {
             "files": [
@@ -56,13 +57,28 @@ jobs:
           }
           EOF
 
-          jf rt rbc "${BUNDLE_NAME}" "${CONTAINER_VERSION}" \
-            --spec=release-bundle-spec.json \
-            --signing-key=${{ secrets.KEY_ALIAS }} \
-            --sync=true \
-            --project="${JFROG_PROJECT}"
+      - name: Create Release Bundle
+        run: |
+          set -euo pipefail
+
+          echo "Using CONTAINER_VERSION=${CONTAINER_VERSION}"
+          SIGNING_KEY="${{ secrets.RB_KEY }}"
+
+          if [ -z "$SIGNING_KEY" ]; then
+            echo "⚠️ No RB_KEY provided → Release Bundle will NOT be signed"
+            jf rbc "${BUNDLE_NAME}" "${CONTAINER_VERSION}" \
+              --spec=release-bundle-spec.json \
+              --project="${JFROG_PROJECT}"
+          else
+            echo "🔐 Using RB_KEY to sign Release Bundle"
+            echo "${SIGNING_KEY}" > rb.key
+            jf rbc "${BUNDLE_NAME}" "${CONTAINER_VERSION}" \
+              --spec=release-bundle-spec.json \
+              --signing-key=rb.key \
+              --project="${JFROG_PROJECT}"
+          fi
 
       - name: Publish Release Bundle
         run: |
-          jf rt rbp "${BUNDLE_NAME}" "${CONTAINER_VERSION}" \
+          jf rbp "${BUNDLE_NAME}" "${CONTAINER_VERSION}" \
             --project="${JFROG_PROJECT}"

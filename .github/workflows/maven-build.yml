@@ -3,56 +3,79 @@ name: Maven Build Pipeline
 on:
   workflow_call:
     inputs:
-      version:
+      jfrog_project:
+        required: true
         type: string
-        required: false
+
     secrets:
       JF_URL:
         required: true
       JF_ACCESS_TOKEN:
         required: true
-      ORAS_TOKEN:
-        required: true
-      ORAS_USERNAME:
-        required: true
 
 permissions:
   contents: read
+  id-token: write
   packages: write
   actions: read
-  id-token: write
-  security-events: write
   attestations: write
 
 jobs:
   build:
-    name: Build & Publish
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        java: ['11']
+
     outputs:
-      image: ${{ steps.metadata.outputs.image }}
-      digest: ${{ steps.push.outputs.digest }}
-      version: ${{ steps.metadata.outputs.version }}
-    
+      version: ${{ steps.version.outputs.container_version }}
+      image:   ${{ steps.metadata.outputs.image }}
+      digest:  ${{ steps.metadata.outputs.digest }}
+
+    env:
+      REPO_PREFIX: artifactory.rodolphef.org/dev-oci
+      JFROG_PROJECT: ${{ inputs.jfrog_project }}
+
     steps:
+
+      #######################################################
+      # CHECKOUT
+      #######################################################
       - name: Checkout
         uses: actions/checkout@v4
-      
-      - name: Set up JDK ${{ matrix.java }}
+
+      #######################################################
+      # JAVA
+      #######################################################
+      - name: Set up JDK 11
         uses: actions/setup-java@v4
         with:
-          java-version: ${{ matrix.java }}
-          distribution: 'temurin'
+          java-version: "11"
+          distribution: "temurin"
           cache: maven
-      
+
+      #######################################################
+      # JFROG CLI
+      #######################################################
       - name: Setup JFrog CLI
         uses: jfrog/setup-jfrog-cli@v4
         env:
           JF_URL: ${{ secrets.JF_URL }}
           JF_ACCESS_TOKEN: ${{ secrets.JF_ACCESS_TOKEN }}
-      
+
+      #######################################################
+      # EXTRACT VERSION
+      #######################################################
+      - name: Extract version
+        id: version
+        run: |
+          RAW_VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
+          BASE_VERSION="${RAW_VERSION%-SNAPSHOT}"
+          CONTAINER_VERSION="${BASE_VERSION}.${GITHUB_RUN_NUMBER}"
+
+          echo "container_version=${CONTAINER_VERSION}" >> $GITHUB_OUTPUT
+          echo "CONTAINER_VERSION=${CONTAINER_VERSION}" >> $GITHUB_ENV
+
+      #######################################################
+      # CONFIGURE MAVEN
+      #######################################################
       - name: Configure Maven repos
         run: |
           jf mvnc \
@@ -60,58 +83,70 @@ jobs:
             --repo-deploy-snapshots=${{ vars.MVN_DEV_REPO_DEPLOY_SNAPSHOTS }} \
             --repo-resolve-releases=${{ vars.MVN_DEV_REPO_RESOLVE_RELEASES }} \
             --repo-resolve-snapshots=${{ vars.MVN_DEV_REPO_RESOLVE_SNAPSHOTS }}
-      
-      - name: Extract version
-        id: extract
-        run: |
-          VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout | sed 's/-SNAPSHOT//')
-          VERSION="${VERSION}.${GITHUB_RUN_NUMBER}"
-          echo "VERSION=${VERSION}" >> $GITHUB_ENV
-      
+
+      #######################################################
+      # BUILD IMAGES
+      #######################################################
       - name: Build images
         run: |
-          jf mvn -B -DskipTests spring-boot:build-image -Pk8s \
-            -DREPOSITORY_PREFIX=artifactory.rodolphef.org/dev-oci \
-            -DVERSION=${VERSION} \
-            --project="${{ vars.JFROG_PROJECT }}"
-      
-      - name: Push images
-        id: push
-        run: |
-          set -euo pipefail
-          SERVICES="spring-petclinic-cloud-api-gateway spring-petclinic-cloud-visits-service spring-petclinic-cloud-vets-service spring-petclinic-cloud-customers-service spring-petclinic-cloud-admin-server spring-petclinic-cloud-discovery-service spring-petclinic-cloud-config-server"
-          
-          for S in $SERVICES; do
-            jf docker push artifactory.rodolphef.org/dev-oci/$S:${VERSION} \
-              --project "${{ vars.JFROG_PROJECT }}"
+          SERVICES=(
+            "spring-petclinic-cloud-api-gateway"
+            "spring-petclinic-cloud-visits-service"
+            "spring-petclinic-cloud-vets-service"
+            "spring-petclinic-cloud-customers-service"
+            "spring-petclinic-cloud-admin-server"
+            "spring-petclinic-cloud-discovery-service"
+            "spring-petclinic-cloud-config-server"
+          )
+
+          for S in "${SERVICES[@]}"; do
+            jf mvn -B -DskipTests spring-boot:build-image -Pk8s \
+              -DREPOSITORY_PREFIX=${REPO_PREFIX} \
+              -DVERSION=${CONTAINER_VERSION} \
+              --project="${JFROG_PROJECT}"
           done
-          
-          DIGEST=$(jf rt curl -X GET \
-            "/api/docker/dev-oci-local/v2/spring-petclinic-cloud-api-gateway/manifests/${{ env.VERSION }}" \
-            -H "Accept: application/vnd.docker.distribution.manifest.v2+json" | jq -r '.config.digest')
-          
-          echo "digest=$DIGEST" >> $GITHUB_OUTPUT
-      
-      - name: Set metadata
+
+      #######################################################
+      # PUSH IMAGES
+      #######################################################
+      - name: Push images
+        run: |
+          SERVICES=(
+            "spring-petclinic-cloud-api-gateway"
+            "spring-petclinic-cloud-visits-service"
+            "spring-petclinic-cloud-vets-service"
+            "spring-petclinic-cloud-customers-service"
+            "spring-petclinic-cloud-admin-server"
+            "spring-petclinic-cloud-discovery-service"
+            "spring-petclinic-cloud-config-server"
+          )
+
+          for S in "${SERVICES[@]}"; do
+            jf docker push ${REPO_PREFIX}/${S}:${CONTAINER_VERSION} \
+              --project="${JFROG_PROJECT}"
+          done
+
+      #######################################################
+      # EXTRACT DIGEST FOR API GATEWAY (MAIN IMAGE)
+      #######################################################
+      - name: Extract image metadata
         id: metadata
         run: |
-          IMG="artifactory.rodolphef.org/dev-oci/spring-petclinic-cloud-api-gateway:${VERSION}"
-          echo "image=${IMG}" >> $GITHUB_OUTPUT
-          echo "version=${VERSION}" >> $GITHUB_OUTPUT
-      
+          IMAGE="${REPO_PREFIX}/spring-petclinic-cloud-api-gateway:${CONTAINER_VERSION}"
+
+          DIGEST=$(jf rt curl -X GET \
+            "/api/docker/dev-oci-local/v2/spring-petclinic-cloud-api-gateway/manifests/${CONTAINER_VERSION}" \
+            -H "Accept: application/vnd.docker.distribution.manifest.v2+json" \
+            | jq -r '.config.digest')
+
+          echo "image=${IMAGE}"   >> $GITHUB_OUTPUT
+          echo "digest=${DIGEST}" >> $GITHUB_OUTPUT
+
+      #######################################################
+      # PUBLISH BUILD INFO
+      #######################################################
       - name: Publish Build Info
         run: |
-          jf rt bce --project "${{ vars.JFROG_PROJECT }}"
-          jf rt bag --project "${{ vars.JFROG_PROJECT }}"
-          jf rt bp --project "${{ vars.JFROG_PROJECT }}"
-
-  container-provenance:
-    name: SLSA Container Provenance
-    needs: build
-    uses: ./.github/workflows/slsa-container-provenance.yml
-    with:
-      image: ${{ needs.build.outputs.image }}
-      digest: ${{ needs.build.outputs.digest }}
-    secrets:
-      ORAS_TOKEN: ${{ secrets.ORAS_TOKEN }}
-      ORAS_USERNAME: ${{ secrets.ORAS_USERNAME }}
+          jf rt bce --project="${JFROG_PROJECT}"
+          jf rt bag --project="${JFROG_PROJECT}"
+          jf rt bp  --project="${JFROG_PROJECT}"

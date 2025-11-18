@@ -9,27 +9,23 @@ on:
       digest:
         required: true
         type: string
-    secrets:
-      ORAS_TOKEN:
+      container_version:        # NEW
         required: true
-      ORAS_USERNAME:
-        required: true
+        type: string
 
 permissions:
-  id-token: write
   contents: read
+  id-token: write
+  attestations: write
   actions: read
   packages: write
-  security-events: write
-  attestations: write
 
 jobs:
   provenance:
     uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v2.1.0
     with:
-      image: ${{ inputs.image }}
+      image:  ${{ inputs.image }}
       digest: ${{ inputs.digest }}
-      private-repository: true
-    secrets:
-      registry-password: ${{ secrets.ORAS_TOKEN }}
-      registry-username: ${{ secrets.ORAS_USERNAME }}
+      # SLSA requires a tag for the artifact reference.
+      # We pass the new shared unified version:
+      registry-tag: ${{ inputs.container_version }}

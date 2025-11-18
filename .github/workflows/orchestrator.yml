@@ -9,15 +9,18 @@ on:
     - cron: "0 0 * * *"
 
 jobs:
+
   build:
     uses: ./.github/workflows/maven-build.yml
+    with:
+      jfrog_project: ${{ vars.JFROG_PROJECT }}
     secrets: inherit
 
   release_bundle:
     needs: build
     uses: ./.github/workflows/release-bundle.yml
     with:
-      container_version: ${{ needs.build.outputs.container_version }}
+      container_version: ${{ needs.build.outputs.version }}   # 🔥 Correct output
       jfrog_project: ${{ vars.JFROG_PROJECT }}
     secrets: inherit
 
@@ -25,8 +28,6 @@ jobs:
     needs: [ build, release_bundle ]
     uses: ./.github/workflows/rlm-evidence.yml
     with:
-      image: ${{ needs.build.outputs.image }}
-      digest: ${{ needs.build.outputs.digest }}
-      container_version: ${{ needs.build.outputs.container_version }}
+      container_version: ${{ needs.build.outputs.version }}   # 🔥 Correct output
       jfrog_project: ${{ vars.JFROG_PROJECT }}
     secrets: inherit
