@@ -1,13 +1,5 @@
 name: Maven Build Pipeline
 
-on:
-  push:
-    branches: [ master ]
-  pull_request:
-    branches: [ master ]
-  schedule:
-    - cron: "0 0 * * *"
-
 permissions:
   contents: read
   packages: write
@@ -79,7 +71,7 @@ jobs:
           done
           
           DIGEST=$(jf rt curl -X GET \
-            "/api/docker/dev-oci-local/v2/spring-petclinic-cloud-api-gateway/manifests/${VERSION}" \
+            "/api/docker/dev-oci-local/v2/spring-petclinic-cloud-api-gateway/manifests/${{ env.VERSION }}" \
             -H "Accept: application/vnd.docker.distribution.manifest.v2+json" | jq -r '.config.digest')
           
           echo "digest=$DIGEST" >> $GITHUB_OUTPUT
