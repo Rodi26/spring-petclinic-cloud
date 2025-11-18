@@ -3,13 +3,12 @@ name: Release Bundle
 on:
   workflow_call:
     inputs:
-      version:
+      container_version:
         required: true
         type: string
       jfrog_project:
         required: true
         type: string
-
     secrets:
       JF_URL:
         required: true
@@ -17,16 +16,23 @@ on:
         required: true
 
 permissions:
-  id-token: write
   contents: read
-  actions: read
+  id-token: write
   packages: write
+  actions: read
   security-events: write
   attestations: write
+
+env:
+  REPOSITORY_PREFIX: dev-oci-local
+  BUNDLE_NAME: spring-petclinic-cloud
 
 jobs:
   release_bundle:
     runs-on: ubuntu-latest
+    env:
+      CONTAINER_VERSION: ${{ inputs.container_version }}
+      JFROG_PROJECT: ${{ inputs.jfrog_project }}
 
     steps:
       - name: Setup JFrog CLI
@@ -35,14 +41,28 @@ jobs:
           JF_URL: ${{ secrets.JF_URL }}
           JF_ACCESS_TOKEN: ${{ secrets.JF_ACCESS_TOKEN }}
 
-      - name: Create Release Bundle
+      - name: Create Release Bundle from build-info artifacts
         run: |
-          jf rt rbc "spring-petclinic-cloud-release-bundle" \
-            "${{ inputs.version }}" --sign \
-            --project="${{ inputs.jfrog_project }}"
+          set -euo pipefail
+          echo "Using CONTAINER_VERSION=${CONTAINER_VERSION}"
+
+          cat > release-bundle-spec.json << EOF
+          {
+            "files": [
+              {
+                "pattern": "${REPOSITORY_PREFIX}/spring-petclinic-cloud-*/${CONTAINER_VERSION}/*"
+              }
+            ]
+          }
+          EOF
+
+          jf rt rbc "${BUNDLE_NAME}" "${CONTAINER_VERSION}" \
+            --spec=release-bundle-spec.json \
+            --signing-key=${{ secrets.KEY_ALIAS }} \
+            --sync=true \
+            --project="${JFROG_PROJECT}"
 
       - name: Publish Release Bundle
         run: |
-          jf rt rbp "spring-petclinic-cloud-release-bundle" \
-            "${{ inputs.version }}" \
-            --project="${{ inputs.jfrog_project }}"
+          jf rt rbp "${BUNDLE_NAME}" "${CONTAINER_VERSION}" \
+            --project="${JFROG_PROJECT}"

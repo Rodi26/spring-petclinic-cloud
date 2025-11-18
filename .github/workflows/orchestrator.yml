@@ -1,53 +1,34 @@
 name: Orchestrator Pipeline
 
 on:
-  workflow_dispatch:
-    inputs:
-      version:
-        description: "Version à déployer"
-        required: true
-        type: string
-        default: "2.6.3"
-      jfrog_project:
-        description: "JFrog Project"
-        required: true
-        type: string
-        default: "demo-1"
-      environment:
-        description: "Environnement (dev / staging / prod)"
-        required: true
-        type: string
-        default: "dev"
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+  schedule:
+    - cron: "0 0 * * *"
 
 jobs:
-  build-microservices:
-    name: Build & Publish Microservices
+  build:
     uses: ./.github/workflows/maven-build.yml
-    secrets: inherit
-
-  slsa-container-provenance:
-    name: Generate SLSA Provenance
-    needs: build-microservices
-    uses: ./.github/workflows/slsa-container-provenance.yml
     with:
-      image: ${{ needs.build-microservices.outputs.image }}
-      digest: ${{ needs.build-microservices.outputs.digest }}
+      jfrog_project: ${{ vars.JFROG_PROJECT }}
     secrets: inherit
 
-  create-release-bundle:
-    name: Create Release Bundle
-    needs: slsa-container-provenance
+  release_bundle:
+    needs: build
     uses: ./.github/workflows/release-bundle.yml
     with:
-      version: ${{ inputs.version }}
-      jfrog_project: ${{ inputs.jfrog_project }}
+      container_version: ${{ needs.build.outputs.container_version }}
+      jfrog_project: ${{ vars.JFROG_PROJECT }}
     secrets: inherit
 
-  rlm-evidence:
-    name: Generate RLM Evidence
-    needs: create-release-bundle
+  rlm_evidence:
+    needs: [ build, release_bundle ]
     uses: ./.github/workflows/rlm-evidence.yml
     with:
-      version: ${{ inputs.version }}
-      jfrog_project: ${{ inputs.jfrog_project }}
+      image: ${{ needs.build.outputs.image }}
+      digest: ${{ needs.build.outputs.digest }}
+      container_version: ${{ needs.build.outputs.container_version }}
+      jfrog_project: ${{ vars.JFROG_PROJECT }}
     secrets: inherit
