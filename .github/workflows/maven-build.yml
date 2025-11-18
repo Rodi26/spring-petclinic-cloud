@@ -1,5 +1,18 @@
 name: Maven Build Pipeline
 
+on:
+  workflow_call:
+    inputs: {}
+    secrets:
+      JF_URL:
+        required: true
+      JF_ACCESS_TOKEN:
+        required: true
+      ORAS_TOKEN:
+        required: true
+      ORAS_USERNAME:
+        required: true
+
 permissions:
   contents: read
   packages: write
@@ -90,12 +103,12 @@ jobs:
           jf rt bp --project "${{ vars.JFROG_PROJECT }}"
 
   container-provenance:
-      name: SLSA Container Provenance
-      needs: build
-      uses: ./.github/workflows/slsa-container-provenance.yml
-      with:
-        image: ${{ needs.build.outputs.image }}
-        digest: ${{ needs.build.outputs.digest }}
-      secrets:
-        ORAS_TOKEN: ${{ secrets.ORAS_TOKEN }}
-        ORAS_USERNAME: ${{ secrets.ORAS_USERNAME }}
+    name: SLSA Container Provenance
+    needs: build
+    uses: ./.github/workflows/slsa-container-provenance.yml
+    with:
+      image: ${{ needs.build.outputs.image }}
+      digest: ${{ needs.build.outputs.digest }}
+    secrets:
+      ORAS_TOKEN: ${{ secrets.ORAS_TOKEN }}
+      ORAS_USERNAME: ${{ secrets.ORAS_USERNAME }}
