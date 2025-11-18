@@ -1,4 +1,4 @@
-name: Generate RLM Evidence (per service, matrix)
+name: Generate RLM Evidence (per service & matrix)
 
 on:
   workflow_call:
