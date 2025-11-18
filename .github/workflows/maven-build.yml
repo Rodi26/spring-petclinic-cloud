@@ -101,7 +101,6 @@ jobs:
   container-provenance:
     name: SLSA Container Provenance
     needs: build
-    permissions: inherit
     uses: ./.github/workflows/slsa-container-provenance.yml
     with:
       image: ${{ needs.build.outputs.image }}
