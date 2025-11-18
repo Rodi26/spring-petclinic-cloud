@@ -1,4 +1,4 @@
-name: Evidence RLM
+name: Generate RLM Evidence
 
 on:
   workflow_call:
@@ -9,6 +9,7 @@ on:
       jfrog_project:
         required: true
         type: string
+
     secrets:
       JF_URL:
         required: true
@@ -20,7 +21,7 @@ permissions:
   id-token: write
 
 jobs:
-  evidence:
+  rlm_evidence:
     runs-on: ubuntu-latest
 
     steps:
@@ -30,7 +31,7 @@ jobs:
           JF_URL: ${{ secrets.JF_URL }}
           JF_ACCESS_TOKEN: ${{ secrets.JF_ACCESS_TOKEN }}
 
-      - name: Generate Evidence
+      - name: Generate evidence
         run: |
           jf evid collect \
             --build="Java CI with Maven (Modular Orchestrator)" \

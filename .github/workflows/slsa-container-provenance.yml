@@ -1,4 +1,4 @@
-name: SLSA Provenance
+name: SLSA Container Provenance
 
 on:
   workflow_call:
@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Generate provenance
+      - name: Generate SLSA Provenance
         uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v2.1.0
         with:
           image: ${{ inputs.image }}

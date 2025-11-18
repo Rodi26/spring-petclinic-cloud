@@ -1,32 +1,32 @@
-name: Java CI with Maven (Modular Orchestrator)
+name: Maven Build Pipeline
 
 on:
+  workflow_dispatch:
   push:
     branches: [ "master" ]
-  workflow_dispatch:
 
 permissions:
-  actions: read # for detecting the Github Actions environment
-  id-token: write # for creating OIDC tokens for signing
-  packages: write # for uploading attestations
-  contents: read # read the contents permission
-  security-events: write # for uploading code scanning
-  attestations: write # needed for actions/attest-build-provenance
+  contents: read
+  id-token: write
+  attestations: write
 
 jobs:
+
+  #######################################################
+  # 1. BUILD (reusable workflow)
+  #######################################################
   build:
-    name: Build (Reusable Workflow)
     uses: ./.github/workflows/build-reusable.yml
     with:
       jfrog_project: ${{ vars.JFROG_PROJECT }}
-    secrets:
-      JF_URL: ${{ secrets.JF_URL }}
-      JF_ACCESS_TOKEN: ${{ secrets.JF_ACCESS_TOKEN }}
-      ORAS_TOKEN: ${{ secrets.ORAS_TOKEN }}
-      ORAS_USERNAME: ${{ secrets.ORAS_USERNAME }}
+    secrets: inherit
 
-  xray:
-    name: Xray Scan
+
+
+  #######################################################
+  # 2. XRAY SCAN OF BUILD
+  #######################################################
+  xray_scan:
     needs: build
     uses: ./.github/workflows/xray-scan.yml
     with:
@@ -35,9 +35,52 @@ jobs:
       jfrog_project: ${{ vars.JFROG_PROJECT }}
     secrets: inherit
 
-  ## --- SLSA provenance for each service ---
+
+
+  #######################################################
+  # 3. PROMOTION
+  #######################################################
+  promote:
+    needs: build
+    uses: ./.github/workflows/promote.yml
+    with:
+      version: ${{ needs.build.outputs.version }}
+      jfrog_project: ${{ vars.JFROG_PROJECT }}
+    secrets: inherit
+
+
+
+  #######################################################
+  # 4. RELEASE BUNDLE
+  #######################################################
+  release_bundle:
+    needs: promote
+    uses: ./.github/workflows/release-bundle.yml
+    with:
+      version: ${{ needs.build.outputs.version }}
+      jfrog_project: ${{ vars.JFROG_PROJECT }}
+    secrets: inherit
+
+
+
+  #######################################################
+  # 5. RLM EVIDENCE
+  #######################################################
+  rlm_evidence:
+    needs: release_bundle
+    uses: ./.github/workflows/rlm-evidence.yml
+    with:
+      version: ${{ needs.build.outputs.version }}
+      jfrog_project: ${{ vars.JFROG_PROJECT }}
+    secrets: inherit
+
+
+
+  #######################################################
+  # 6. SLSA PROVENANCE FOR ALL SERVICES
+  #######################################################
+
   slsa_api_gateway:
-    name: SLSA Provenance (API Gateway)
     needs: build
     uses: ./.github/workflows/slsa-container-provenance.yml
     with:
@@ -46,7 +89,6 @@ jobs:
     secrets: inherit
 
   slsa_visits:
-    name: SLSA Provenance (Visits Service)
     needs: build
     uses: ./.github/workflows/slsa-container-provenance.yml
     with:
@@ -55,7 +97,6 @@ jobs:
     secrets: inherit
 
   slsa_vets:
-    name: SLSA Provenance (Vets Service)
     needs: build
     uses: ./.github/workflows/slsa-container-provenance.yml
     with:
@@ -64,7 +105,6 @@ jobs:
     secrets: inherit
 
   slsa_customers:
-    name: SLSA Provenance (Customers Service)
     needs: build
     uses: ./.github/workflows/slsa-container-provenance.yml
     with:
@@ -73,7 +113,6 @@ jobs:
     secrets: inherit
 
   slsa_admin:
-    name: SLSA Provenance (Admin Server)
     needs: build
     uses: ./.github/workflows/slsa-container-provenance.yml
     with:
@@ -82,7 +121,6 @@ jobs:
     secrets: inherit
 
   slsa_discovery:
-    name: SLSA Provenance (Discovery Server)
     needs: build
     uses: ./.github/workflows/slsa-container-provenance.yml
     with:
@@ -91,46 +129,9 @@ jobs:
     secrets: inherit
 
   slsa_config:
-    name: SLSA Provenance (Config Server)
     needs: build
     uses: ./.github/workflows/slsa-container-provenance.yml
     with:
       image:  ${{ needs.build.outputs.image_config }}
       digest: ${{ needs.build.outputs.digest_config }}
-    secrets: inherit
-
-  promote:
-    name: Promote Build
-    needs:
-      - build
-      - xray
-      - slsa_api_gateway
-      - slsa_visits
-      - slsa_vets
-      - slsa_customers
-      - slsa_admin
-      - slsa_discovery
-      - slsa_config
-    uses: ./.github/workflows/promote.yml
-    with:
-      version: ${{ needs.build.outputs.version }}
-      jfrog_project: ${{ vars.JFROG_PROJECT }}
-    secrets: inherit
-
-  release_bundle:
-    name: Create Release Bundle
-    needs: promote
-    uses: ./.github/workflows/release-bundle.yml
-    with:
-      version: ${{ needs.build.outputs.version }}
-      jfrog_project: ${{ vars.JFROG_PROJECT }}
-    secrets: inherit
-
-  rlm_evidence:
-    name: Generate Evidence RLM
-    needs: release_bundle
-    uses: ./.github/workflows/rlm-evidence.yml
-    with:
-      version: ${{ needs.build.outputs.version }}
-      jfrog_project: ${{ vars.JFROG_PROJECT }}
     secrets: inherit

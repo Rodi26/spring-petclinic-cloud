@@ -1,44 +1,44 @@
-name: Create Release Bundle
+name: Release Bundle
 
 on:
   workflow_call:
     inputs:
-      jfrog_project:
-        required: true
       version:
         required: true
-      image:
+        type: string
+      jfrog_project:
         required: true
-      digest:
-        required: true
+        type: string
+
     secrets:
       JF_URL:
         required: true
       JF_ACCESS_TOKEN:
         required: true
 
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
-  rb:
+  release_bundle:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: jfrog/setup-jfrog-cli@v4
+      - name: Setup JFrog CLI
+        uses: jfrog/setup-jfrog-cli@v4
         env:
           JF_URL: ${{ secrets.JF_URL }}
           JF_ACCESS_TOKEN: ${{ secrets.JF_ACCESS_TOKEN }}
 
-      - name: Create Release Bundle V2
+      - name: Create Release Bundle
         run: |
-          jf release-bundle-create "spring-petclinic-cloud" "${{ inputs.version }}" \
-            --signing-key=default \
-            --project="${{ inputs.jfrog_project }}" \
-            --spec=- <<EOF
-          {
-            "files": [
-              {
-                "pattern": "${{ inputs.image }}@${{ inputs.digest }}",
-                "target": "release-bundles/"
-              }
-            ]
-          }
-          EOF
+          jf rt rbc "spring-petclinic-cloud-release-bundle" \
+            "${{ inputs.version }}" --sign \
+            --project="${{ inputs.jfrog_project }}"
+
+      - name: Publish Release Bundle
+        run: |
+          jf rt rbp "spring-petclinic-cloud-release-bundle" \
+            "${{ inputs.version }}" \
+            --project="${{ inputs.jfrog_project }}"
