@@ -88,6 +88,7 @@ jobs:
     permissions:
       id-token: write
       contents: read
+      attestations: write
     needs: build
     uses: ./.github/workflows/slsa-container-provenance.yml
     with:
@@ -99,6 +100,7 @@ jobs:
     permissions:
       id-token: write
       contents: read
+      attestations: write
     needs: build
     uses: ./.github/workflows/slsa-container-provenance.yml
     with:
@@ -110,6 +112,7 @@ jobs:
     permissions:
       id-token: write
       contents: read
+      attestations: write
     needs: build
     uses: ./.github/workflows/slsa-container-provenance.yml
     with:
@@ -121,6 +124,7 @@ jobs:
     permissions:
       id-token: write
       contents: read
+      attestations: write
     needs: build
     uses: ./.github/workflows/slsa-container-provenance.yml
     with:
@@ -132,6 +136,7 @@ jobs:
     permissions:
       id-token: write
       contents: read
+      attestations: write
     needs: build
     uses: ./.github/workflows/slsa-container-provenance.yml
     with:
@@ -143,6 +148,7 @@ jobs:
     permissions:
       id-token: write
       contents: read
+      attestations: write
     needs: build
     uses: ./.github/workflows/slsa-container-provenance.yml
     with:
@@ -154,6 +160,7 @@ jobs:
     permissions:
       id-token: write
       contents: read
+      attestations: write
     needs: build
     uses: ./.github/workflows/slsa-container-provenance.yml
     with:
