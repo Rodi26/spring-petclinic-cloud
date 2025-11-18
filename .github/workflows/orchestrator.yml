@@ -11,8 +11,6 @@ on:
 jobs:
   build:
     uses: ./.github/workflows/maven-build.yml
-    with:
-      jfrog_project: ${{ vars.JFROG_PROJECT }}
     secrets: inherit
 
   release_bundle:
