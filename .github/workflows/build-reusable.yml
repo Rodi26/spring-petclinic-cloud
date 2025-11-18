@@ -22,8 +22,8 @@ jobs:
     runs-on: ubuntu-latest
 
     outputs:
-      image: ${{ steps.meta.outputs.image }}
-      digest: ${{ steps.meta.outputs.digest }}
+      image: ${{ steps.docker-push.outputs.image }}
+      digest: ${{ steps.docker-push.outputs.digest }}
       container_version: ${{ steps.extract.outputs.version }}
 
     env:
