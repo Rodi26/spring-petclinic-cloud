@@ -8,12 +8,6 @@ on:
         required: true
         type: string
         default: "2.6.3"
-
-      jfrog_project:
-        description: "JFrog Project"
-        required: true
-        type: string
-        default: "demo-1"
       environment:
         description: "Environnement (dev / staging / prod)"
         required: true
@@ -23,8 +17,6 @@ on:
 jobs:
   build-microservices:
     uses: ./.github/workflows/maven-build.yml
-    with:
-      jfrog_project: ${{ inputs.jfrog_project }}
     secrets: inherit
 
   slsa-container-provenance:
@@ -40,7 +32,6 @@ jobs:
     uses: ./.github/workflows/release-bundle.yml
     with:
       version: ${{ inputs.version }}
-      jfrog_project: ${{ inputs.jfrog_project }}
     secrets: inherit
 
   rlm-evidence:
@@ -48,5 +39,4 @@ jobs:
     uses: ./.github/workflows/rlm-evidence.yml
     with:
       version: ${{ inputs.version }}
-      jfrog_project: ${{ inputs.jfrog_project }}
     secrets: inherit
