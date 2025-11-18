@@ -2,7 +2,10 @@ name: Maven Build Pipeline
 
 on:
   workflow_call:
-    inputs: {}
+    inputs:
+      version:
+        type: string
+        required: false
     secrets:
       JF_URL:
         required: true
@@ -27,7 +30,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        java: [ '11' ]
+        java: ['11']
     outputs:
       image: ${{ steps.metadata.outputs.image }}
       digest: ${{ steps.push.outputs.digest }}
@@ -37,10 +40,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
       
-      - name: Set up JDK ${{matrix.java}}
+      - name: Set up JDK ${{ matrix.java }}
         uses: actions/setup-java@v4
         with:
-          java-version: ${{matrix.java}}
+          java-version: ${{ matrix.java }}
           distribution: 'temurin'
           cache: maven
       
