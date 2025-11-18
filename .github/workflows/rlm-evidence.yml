@@ -18,11 +18,11 @@ on:
 
 permissions:
   contents: read
-  id-token: write
-  attestations: write
-  actions: read # for detecting the Github Actions environment
-  packages: write # for uploading attestations
-  security-events: write # for uploading code scanning
+  actions: read
+  security-events: write
+  id-token: none
+  attestations: none
+  packages: none
 
 jobs:
   rlm_evidence:

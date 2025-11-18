@@ -27,20 +27,7 @@ jobs:
 
     outputs:
       version: ${{ steps.extract.outputs.version }}
-      image_api_gateway:     ${{ steps.meta_api_gateway.outputs.image }}
-      digest_api_gateway:    ${{ steps.meta_api_gateway.outputs.digest }}
-      image_visits:          ${{ steps.meta_visits.outputs.image }}
-      digest_visits:         ${{ steps.meta_visits.outputs.digest }}
-      image_vets:            ${{ steps.meta_vets.outputs.image }}
-      digest_vets:           ${{ steps.meta_vets.outputs.digest }}
-      image_customers:       ${{ steps.meta_customers.outputs.image }}
-      digest_customers:      ${{ steps.meta_customers.outputs.digest }}
-      image_admin:           ${{ steps.meta_admin.outputs.image }}
-      digest_admin:          ${{ steps.meta_admin.outputs.digest }}
-      image_discovery:       ${{ steps.meta_discovery.outputs.image }}
-      digest_discovery:      ${{ steps.meta_discovery.outputs.digest }}
-      image_config:          ${{ steps.meta_config.outputs.image }}
-      digest_config:         ${{ steps.meta_config.outputs.digest }}
+      services_metadata: ${{ steps.collect_metadata.outputs.services_metadata }}
 
     steps:
 
@@ -88,18 +75,39 @@ jobs:
               --project="${{ inputs.jfrog_project }}"
           done
 
-      ############################################################
-      # DIGEST EXTRACTION FOR EACH SERVICE
-      ############################################################
-
-      - name: Digest API Gateway
-        id: meta_api_gateway
+      - name: Collect all digests dynamically
+        id: collect_metadata
         run: |
-          IMAGE="artifactory.rodolphef.org/dev-oci/spring-petclinic-cloud-api-gateway"
           VERSION="${{ steps.extract.outputs.version }}"
-          DIGEST=$(jf rt curl -X GET "/api/docker/dev-oci/v2/spring-petclinic-cloud-api-gateway/manifests/$VERSION" -H "Accept: application/vnd.docker.distribution.manifest.v2+json" | jq -r '.config.digest')
-          echo "image=$IMAGE:$VERSION" >> $GITHUB_OUTPUT
-          echo "digest=$DIGEST" >> $GITHUB_OUTPUT
+          REPO="artifactory.rodolphef.org/dev-oci"
 
-      # 6 other blocks identical for visits, vets, customers, admin, discovery, config
-      # (omitted for brevity but validated and consistent)
+          SERVICES=(
+            "spring-petclinic-cloud-api-gateway"
+            "spring-petclinic-cloud-visits-service"
+            "spring-petclinic-cloud-vets-service"
+            "spring-petclinic-cloud-customers-service"
+            "spring-petclinic-cloud-admin-server"
+            "spring-petclinic-cloud-discovery-service"
+            "spring-petclinic-cloud-config-server"
+          )
+
+          JSON="{"
+
+          first=true
+          for S in "${SERVICES[@]}"; do
+            IMAGE="$REPO/$S:$VERSION"
+            DIGEST=$(jf rt curl -X GET "/api/docker/dev-oci/v2/${S}/manifests/$VERSION" \
+              -H "Accept: application/vnd.docker.distribution.manifest.v2+json" \
+              | jq -r '.config.digest')
+
+            if [ "$first" = true ]; then
+              first=false
+            else
+              JSON="$JSON,"
+            fi
+
+            JSON="$JSON \"${S}\": { \"image\": \"${IMAGE}\", \"digest\": \"${DIGEST}\" }"
+          done
+
+          JSON="$JSON }"
+          echo "services_metadata=$JSON" >> $GITHUB_OUTPUT

@@ -1,20 +1,114 @@
-name: SLSA Container Provenance
+name: Maven Build Pipeline
 
 on:
-  workflow_call:
-    inputs:
-      image:
-        required: true
-        type: string
-      digest:
-        required: true
-        type: string
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+  schedule:
+    - cron: "0 0 * * *"
 
-permissions: inherit
+permissions:
+  contents: read
+  packages: write
+  actions: read
+  id-token: write
+  security-events: write
+  attestations: write
 
 jobs:
-  create_provenance:
+
+  build:
+    name: Build & Publish
     runs-on: ubuntu-latest
+
+    outputs:
+      image: ${{ steps.metadata.outputs.image }}
+      digest: ${{ steps.push.outputs.digest }}
+      version: ${{ steps.metadata.outputs.version }}
+
     steps:
-      - name: Create SLSA provenance
-        run: echo "Creating provenance for ${{ inputs.image }} with digest ${{ inputs.digest }}"
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: '11'
+          distribution: 'adopt'
+          cache: maven
+
+      - name: Setup JFrog CLI
+        uses: jfrog/setup-jfrog-cli@v4
+        env:
+          JF_URL: ${{ secrets.JF_URL }}
+          JF_ACCESS_TOKEN: ${{ secrets.JF_ACCESS_TOKEN }}
+
+      - name: Configure Maven repos
+        run: |
+          jf mvnc \
+            --repo-deploy-releases=${{ vars.MVN_DEV_REPO_DEPLOY_RELEASES }} \
+            --repo-deploy-snapshots=${{ vars.MVN_DEV_REPO_DEPLOY_SNAPSHOTS }} \
+            --repo-resolve-releases=${{ vars.MVN_DEV_REPO_RESOLVE_RELEASES }} \
+            --repo-resolve-snapshots=${{ vars.MVN_DEV_REPO_RESOLVE_SNAPSHOTS }}
+
+      - name: Extract version
+        id: extract
+        run: |
+          VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout | sed 's/-SNAPSHOT//')
+          VERSION="${VERSION}.${GITHUB_RUN_NUMBER}"
+          echo "VERSION=${VERSION}" >> $GITHUB_ENV
+
+      - name: Build images
+        run: |
+          jf mvn -B -DskipTests spring-boot:build-image -Pk8s \
+            -DREPOSITORY_PREFIX=artifactory.rodolphef.org/dev-oci \
+            -DVERSION=${VERSION} \
+            --project="${{ vars.JFROG_PROJECT }}"
+
+      - name: Push images
+        id: push
+        run: |
+          set -e
+          SERVICES="spring-petclinic-cloud-api-gateway"
+          for S in $SERVICES; do
+            jf docker push artifactory.rodolphef.org/dev-oci/$S:${VERSION} \
+              --project "${{ vars.JFROG_PROJECT }}"
+          done
+
+          DIGEST=$(jf rt curl -X GET \
+            "/api/docker/dev-oci-local/v2/spring-petclinic-cloud-api-gateway/manifests/${VERSION}" \
+            -H "Accept: application/vnd.docker.distribution.manifest.v2+json" | jq -r '.config.digest')
+
+          echo "digest=$DIGEST" >> $GITHUB_OUTPUT
+
+      - name: Set metadata
+        id: metadata
+        run: |
+          IMG="artifactory.rodolphef.org/dev-oci-local/spring-petclinic-cloud-api-gateway:${VERSION}"
+          echo "image=${IMG}" >> $GITHUB_OUTPUT
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Publish Build Info
+        run: |
+          jf rt bce --project "${{ vars.JFROG_PROJECT }}"
+          jf rt bag --project "${{ vars.JFROG_PROJECT }}"
+          jf rt bp  --project "${{ vars.JFROG_PROJECT }}"
+
+  attest:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Generate GitHub Attestation
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-name: ${{ needs.build.outputs.image }}
+          subject-digest: ${{ needs.build.outputs.digest }}
+          push-to-registry: true
+
+      - name: Print results
+        run: |
+          echo "Image: ${{ needs.build.outputs.image }}"
+          echo "Digest: ${{ needs.build.outputs.digest }}"
+          echo "Version: ${{ needs.build.outputs.version }}"
