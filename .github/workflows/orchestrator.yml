@@ -1,0 +1,47 @@
+
+
+name: Orchestrator Pipeline
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version à déployer"
+        required: true
+      jfrog_project:
+        description: "JFrog Project"
+        required: true
+      environment:
+        description: "Environnement (dev / staging / prod)"
+        required: true
+
+jobs:
+  build-microservices:
+    uses: ./.github/workflows/maven-build.yml
+    with:
+      jfrog_project: ${{ inputs.jfrog_project }}
+    secrets: inherit
+
+  slsa-container-provenance:
+    needs: build-microservices
+    uses: ./.github/workflows/slsa-container-provenance.yml
+    with:
+      version: ${{ inputs.version }}
+      jfrog_project: ${{ inputs.jfrog_project }}
+    secrets: inherit
+
+  create-release-bundle:
+    needs: slsa-container-provenance
+    uses: ./.github/workflows/release-bundle.yml
+    with:
+      version: ${{ inputs.version }}
+      jfrog_project: ${{ inputs.jfrog_project }}
+    secrets: inherit
+
+  rlm-evidence:
+    needs: create-release-bundle
+    uses: ./.github/workflows/rlm-evidence.yml
+    with:
+      version: ${{ inputs.version }}
+      jfrog_project: ${{ inputs.jfrog_project }}
+    secrets: inherit
