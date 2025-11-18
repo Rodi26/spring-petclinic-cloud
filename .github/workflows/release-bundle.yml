@@ -1,4 +1,4 @@
-name: Release Bundle
+name: Release  Bundle
 
 on:
   workflow_call:
