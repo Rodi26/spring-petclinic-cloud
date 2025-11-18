@@ -1,4 +1,4 @@
-name: Generate RLM Evidence (per service & matrix)
+name: Generate RLM Evidence (per service, matrix)
 
 on:
   workflow_call:
@@ -20,7 +20,6 @@ on:
         required: false
       KEY_ALIAS:
         required: false
-
 
 permissions:
   contents: read
@@ -65,44 +64,41 @@ jobs:
       - name: Prepare SLSA provenance evidence payload
         run: |
           set -euo pipefail
-          cat > slsa_provenance_evidence.json << 'EOF'
+          BUILD_TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          
+          cat > slsa_provenance_evidence.json << EOF
           {
-            "slsa_provenance": {
-              "version": "v1.0",
-              "build_type": "https://github.com/slsa-framework/slsa-github-generator/container@v2.1.0",
-              "builder": {
-                "id": "https://github.com/slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v2.1.0"
-              },
-              "invocation": {
-                "config_source": {
-                  "uri": "${{ github.server_url }}/${{ github.repository }}",
-                  "digest": {
-                    "sha1": "${{ github.sha }}"
-                  }
-                }
-              },
-              "metadata": {
-                "build_started_on": "${{ github.event.head_commit.timestamp }}",
-                "build_finished_on": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-                "completeness": {
-                  "parameters": true,
-                  "environment": true,
-                  "materials": true
+            "builder": {
+              "id": "https://github.com/slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v2.1.0"
+            },
+            "buildType": "https://github.com/slsa-framework/slsa-github-generator/container@v2.1.0",
+            "invocation": {
+              "configSource": {
+                "uri": "${{ github.server_url }}/${{ github.repository }}",
+                "digest": {
+                  "sha1": "${{ github.sha }}"
                 },
-                "reproducible": false
+                "entryPoint": ".github/workflows/maven-build.yml"
+              }
+            },
+            "metadata": {
+              "buildStartedOn": "${{ github.event.head_commit.timestamp }}",
+              "buildFinishedOn": "${BUILD_TIMESTAMP}",
+              "completeness": {
+                "parameters": true,
+                "environment": true,
+                "materials": true
               },
-              "materials": [
-                {
-                  "uri": "${{ github.server_url }}/${{ github.repository }}",
-                  "digest": {
-                    "sha1": "${{ github.sha }}"
-                  }
+              "reproducible": false
+            },
+            "materials": [
+              {
+                "uri": "${{ github.server_url }}/${{ github.repository }}",
+                "digest": {
+                  "sha1": "${{ github.sha }}"
                 }
-              ],
-              "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-              "build_number": "${{ github.run_number }}",
-              "version": "${CONTAINER_VERSION}"
-            }
+              }
+            ]
           }
           EOF
           
@@ -113,67 +109,54 @@ jobs:
           - Build Number: ${{ github.run_number }}
           - Version: ${CONTAINER_VERSION}
           - Service: ${{ matrix.service }}
+          - Timestamp: ${BUILD_TIMESTAMP}
           EOF
       
       - name: Prepare GitHub Actions evidence payload
         run: |
           set -euo pipefail
-          cat > github_actions_evidence.json << 'EOF'
+          BUILD_TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          
+          cat > github_actions_evidence.json << EOF
           {
-            "github_actions": {
-              "workflow": {
-                "name": "${{ github.workflow }}",
-                "file": ".github/workflows/maven-build.yml",
-                "run_id": "${{ github.run_id }}",
-                "run_number": "${{ github.run_number }}",
-                "run_attempt": "${{ github.run_attempt }}",
-                "job": "${{ github.job }}",
-                "actor": "${{ github.actor }}",
-                "triggering_actor": "${{ github.triggering_actor }}"
-              },
-              "repository": {
-                "name": "${{ github.repository }}",
-                "owner": "${{ github.repository_owner }}",
-                "url": "${{ github.server_url }}/${{ github.repository }}",
-                "default_branch": "${{ github.event.repository.default_branch }}",
-                "private": ${{ github.event.repository.private }},
-                "fork": ${{ github.event.repository.fork }}
-              },
-              "commit": {
-                "sha": "${{ github.sha }}",
-                "ref": "${{ github.ref }}",
-                "ref_name": "${{ github.ref_name }}",
-                "ref_type": "${{ github.ref_type }}",
-                "head_ref": "${{ github.head_ref }}",
-                "base_ref": "${{ github.base_ref }}"
-              },
-              "event": {
-                "name": "${{ github.event_name }}",
-                "action": "${{ github.event.action }}",
-                "number": "${{ github.event.number }}",
-                "pull_request": ${{ github.event.pull_request != null }},
-                "push": ${{ github.event_name == 'push' }},
-                "schedule": ${{ github.event_name == 'schedule' }}
-              },
-              "runner": {
-                "os": "${{ runner.os }}",
-                "arch": "${{ runner.arch }}"
-              },
-              "security": {
-                "token_permissions": {
-                  "actions": "read",
-                  "id-token": "write",
-                  "packages": "write",
-                  "contents": "read",
-                  "security-events": "write"
-                }
-              },
-              "build_context": {
-                "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-                "version": "${CONTAINER_VERSION}",
-                "build_number": "${{ github.run_number }}",
-                "environment": "github-actions"
-              }
+            "workflow": {
+              "name": "${{ github.workflow }}",
+              "file": ".github/workflows/maven-build.yml",
+              "run_id": "${{ github.run_id }}",
+              "run_number": "${{ github.run_number }}",
+              "run_attempt": "${{ github.run_attempt }}",
+              "job": "${{ github.job }}",
+              "actor": "${{ github.actor }}",
+              "triggering_actor": "${{ github.triggering_actor }}"
+            },
+            "repository": {
+              "name": "${{ github.repository }}",
+              "owner": "${{ github.repository_owner }}",
+              "url": "${{ github.server_url }}/${{ github.repository }}",
+              "default_branch": "${{ github.event.repository.default_branch }}",
+              "private": ${{ github.event.repository.private }},
+              "fork": ${{ github.event.repository.fork }}
+            },
+            "commit": {
+              "sha": "${{ github.sha }}",
+              "ref": "${{ github.ref }}",
+              "ref_name": "${{ github.ref_name }}",
+              "ref_type": "${{ github.ref_type }}"
+            },
+            "event": {
+              "name": "${{ github.event_name }}",
+              "action": "${{ github.event.action }}"
+            },
+            "runner": {
+              "os": "${{ runner.os }}",
+              "arch": "${{ runner.arch }}"
+            },
+            "build_context": {
+              "timestamp": "${BUILD_TIMESTAMP}",
+              "version": "${CONTAINER_VERSION}",
+              "build_number": "${{ github.run_number }}",
+              "service": "${{ matrix.service }}",
+              "environment": "github-actions"
             }
           }
           EOF
@@ -187,53 +170,7 @@ jobs:
           - Version: ${CONTAINER_VERSION}
           EOF
       
-      - name: Prepare GitHub Attestation evidence payload
-        run: |
-          set -euo pipefail
-          cat > github_attestation_evidence.json << 'EOF'
-          {
-            "github_attestation": {
-              "version": "v1",
-              "attestation_type": "build-provenance",
-              "subject": {
-                "name": "${{ matrix.service }}",
-                "version": "${CONTAINER_VERSION}"
-              },
-              "predicate": {
-                "builder": {
-                  "id": "https://github.com/actions/runner",
-                  "version": "${{ runner.os }}-${{ runner.arch }}"
-                },
-                "buildType": "https://github.com/actions/workflows/build",
-                "invocation": {
-                  "configSource": {
-                    "uri": "${{ github.server_url }}/${{ github.repository }}",
-                    "entryPoint": ".github/workflows/maven-build.yml"
-                  }
-                },
-                "metadata": {
-                  "buildStartedOn": "${{ github.event.head_commit.timestamp }}",
-                  "buildFinishedOn": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-                }
-              },
-              "attestation_metadata": {
-                "generated_by": "GitHub Actions",
-                "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-                "version": "${CONTAINER_VERSION}",
-                "build_number": "${{ github.run_number }}"
-              }
-            }
-          }
-          EOF
-          
-          cat > github-attestation-results.md << EOF
-          # GitHub Attestation Evidence
-          - Service: ${{ matrix.service }}
-          - Version: ${CONTAINER_VERSION}
-          - Build Number: ${{ github.run_number }}
-          EOF
-      
-      - name: Publish evidence to JFrog RLM (all predicates)
+      - name: Publish evidence to JFrog RLM
         run: |
           set -euo pipefail
           SERVICE="${{ matrix.service }}"
@@ -251,39 +188,27 @@ jobs:
           fi
           
           echo "📦 Publishing SLSA provenance evidence for ${SERVICE}:${VERSION}"
-          jf evd create-evidence \
+          eval jf evd create-evidence \
             --predicate=slsa_provenance_evidence.json \
             --predicate-type=https://slsa.dev/provenance/v1 \
-            --package-name "${SERVICE}" \
-            --package-version "${VERSION}" \
+            --package-name \"${SERVICE}\" \
+            --package-version \"${VERSION}\" \
             --package-repo-name dev-oci-local \
             --markdown slsa-provenance-results.md \
             ${SIGNING_ARGS} \
-            --project="${PROJECT}" \
+            --project=\"${PROJECT}\" \
             || echo "⚠️ Failed to publish SLSA evidence for ${SERVICE}"
           
           echo "📦 Publishing GitHub Actions evidence for ${SERVICE}:${VERSION}"
-          jf evd create-evidence \
+          eval jf evd create-evidence \
             --predicate=github_actions_evidence.json \
-            --predicate-type=https://jfrog.com/evidence/github-actions/v1 \
-            --package-name "${SERVICE}" \
-            --package-version "${VERSION}" \
+            --predicate-type=https://in-toto.io/attestation/generic/v1 \
+            --package-name \"${SERVICE}\" \
+            --package-version \"${VERSION}\" \
             --package-repo-name dev-oci-local \
             --markdown github-actions-results.md \
             ${SIGNING_ARGS} \
-            --project="${PROJECT}" \
+            --project=\"${PROJECT}\" \
             || echo "⚠️ Failed to publish GitHub Actions evidence for ${SERVICE}"
-          
-          echo "📦 Publishing GitHub Attestation evidence for ${SERVICE}:${VERSION}"
-          jf evd create-evidence \
-            --predicate=github_attestation_evidence.json \
-            --predicate-type=https://jfrog.com/evidence/github-attestation/v1 \
-            --package-name "${SERVICE}" \
-            --package-version "${VERSION}" \
-            --package-repo-name dev-oci-local \
-            --markdown github-attestation-results.md \
-            ${SIGNING_ARGS} \
-            --project="${PROJECT}" \
-            || echo "⚠️ Failed to publish Attestation evidence for ${SERVICE}"
           
           echo "✅ Evidence publishing completed for ${SERVICE}"
