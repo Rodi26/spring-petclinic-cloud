@@ -1,41 +1,42 @@
-name: Xray Security Scan
+name: Xray Scan
 
 on:
   workflow_call:
     inputs:
-      jfrog_project:
-        required: true
       build_name:
         required: true
+        type: string
       build_number:
         required: true
+        type: string
+      jfrog_project:
+        required: true
+        type: string
+
     secrets:
       JF_URL:
         required: true
       JF_ACCESS_TOKEN:
         required: true
 
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
   xray:
     runs-on: ubuntu-latest
 
     steps:
-
-      - uses: jfrog/setup-jfrog-cli@v4
+      - name: Setup JFrog CLI
+        uses: jfrog/setup-jfrog-cli@v4
         env:
           JF_URL: ${{ secrets.JF_URL }}
           JF_ACCESS_TOKEN: ${{ secrets.JF_ACCESS_TOKEN }}
 
-      - name: Xray Scan Build
+      - name: Trigger Xray Scan
         run: |
           jf build-scan \
             "${{ inputs.build_name }}" \
             "${{ inputs.build_number }}" \
-            --format=json \
-            --project="${{ inputs.jfrog_project }}" \
-            > xray.json
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: xray-scan-${{ inputs.build_number }}
-          path: xray.json
+            --project="${{ inputs.jfrog_project }}"

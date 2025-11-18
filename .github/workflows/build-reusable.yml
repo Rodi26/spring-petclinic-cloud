@@ -1,4 +1,4 @@
-name: Build (Reusable)
+name: Build Reusable Workflow
 
 on:
   workflow_call:
@@ -22,25 +22,30 @@ permissions:
 
 jobs:
   build:
-    name: Build & Publish Artifacts
+    name: Build Maven + Containers
     runs-on: ubuntu-latest
 
     outputs:
-      image: ${{ steps.docker-push.outputs.image }}
-      digest: ${{ steps.docker-push.outputs.digest }}
-      container_version: ${{ steps.extract.outputs.version }}
-
-    env:
-      JFROG_PROJECT: ${{ inputs.jfrog_project }}
+      version: ${{ steps.extract.outputs.version }}
+      image_api_gateway:     ${{ steps.meta_api_gateway.outputs.image }}
+      digest_api_gateway:    ${{ steps.meta_api_gateway.outputs.digest }}
+      image_visits:          ${{ steps.meta_visits.outputs.image }}
+      digest_visits:         ${{ steps.meta_visits.outputs.digest }}
+      image_vets:            ${{ steps.meta_vets.outputs.image }}
+      digest_vets:           ${{ steps.meta_vets.outputs.digest }}
+      image_customers:       ${{ steps.meta_customers.outputs.image }}
+      digest_customers:      ${{ steps.meta_customers.outputs.digest }}
+      image_admin:           ${{ steps.meta_admin.outputs.image }}
+      digest_admin:          ${{ steps.meta_admin.outputs.digest }}
+      image_discovery:       ${{ steps.meta_discovery.outputs.image }}
+      digest_discovery:      ${{ steps.meta_discovery.outputs.digest }}
+      image_config:          ${{ steps.meta_config.outputs.image }}
+      digest_config:         ${{ steps.meta_config.outputs.digest }}
 
     steps:
 
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 17
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Setup JFrog CLI
         uses: jfrog/setup-jfrog-cli@v4
@@ -48,67 +53,47 @@ jobs:
           JF_URL: ${{ secrets.JF_URL }}
           JF_ACCESS_TOKEN: ${{ secrets.JF_ACCESS_TOKEN }}
 
-      - name: Configure Maven with JFrog
-        run: |
-          jf mvnc \
-            --repo-resolve-releases=${{ vars.MVN_DEV_REPO_RESOLVE_RELEASES }} \
-            --repo-resolve-snapshots=${{ vars.MVN_DEV_REPO_RESOLVE_SNAPSHOTS }} \
-            --repo-deploy-releases=${{ vars.MVN_DEV_REPO_DEPLOY_RELEASES }} \
-            --repo-deploy-snapshots=${{ vars.MVN_DEV_REPO_DEPLOY_SNAPSHOTS }}
-
-      - name: Build Maven project
-        run: jf mvn clean install -DskipTests
-
-      - name: Extract version
+      - name: Determine Version
         id: extract
         run: |
           VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
-          VERSION=${VERSION/-SNAPSHOT/}
+          VERSION=${VERSION%-SNAPSHOT}
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-      - name: Install ORAS
+      - name: Build & Push all microservices
+        id: meta_api_gateway
         run: |
-          VER=$(curl -s https://api.github.com/repos/oras-project/oras/releases/latest | jq -r ".tag_name")
-          FILE="oras_${VER#v}_linux_amd64.tar.gz"
-          curl -sSL "https://github.com/oras-project/oras/releases/download/${VER}/${FILE}" -o "$FILE"
-          tar -xzf "$FILE"
-          sudo mv oras /usr/local/bin/
-          oras version
+          SERVICES=(
+            "spring-petclinic-cloud-api-gateway"
+            "spring-petclinic-cloud-visits-service"
+            "spring-petclinic-cloud-vets-service"
+            "spring-petclinic-cloud-customers-service"
+            "spring-petclinic-cloud-admin-server"
+            "spring-petclinic-cloud-discovery-service"
+            "spring-petclinic-cloud-config-server"
+          )
 
-      - name: ORAS login
-        run: |
-          echo "${{ secrets.ORAS_TOKEN }}" | oras login ${{ vars.OCI_REGISTRY_URL }} \
-            --username ${{ secrets.ORAS_USERNAME }} --password-stdin
+          REPO="artifactory.rodolphef.org/dev-docker"
 
-      - name: Build OCI images
-        env:
-          REPOSITORY_PREFIX: ${{ vars.OCI_REGISTRY_URL }}/${{ vars.DOCKER_DEV_REPO }}
-        run: |
-          jf mvn -B -DskipTests=true spring-boot:build-image -Pk8s \
-            -DREPOSITORY_PREFIX=$REPOSITORY_PREFIX \
-            -DVERSION=${{ steps.extract.outputs.version }} \
-            --project "${{ inputs.jfrog_project }}"
+          for SVC in "${SERVICES[@]}"; do
+            jf mvn -B -DskipTests spring-boot:build-image \
+              -DREPOSITORY_PREFIX=$REPO \
+              -DVERSION=${{ steps.extract.outputs.version }} \
+              --project="${{ inputs.jfrog_project }}"
 
-      - name: Push OCI images
-        id: docker-push
-        env:
-          PREFIX: ${{ vars.OCI_REGISTRY_URL }}/${{ vars.DOCKER_DEV_REPO }}
-        run: |
-          for service in spring-petclinic-cloud-api-gateway spring-petclinic-cloud-visits-service spring-petclinic-cloud-vets-service spring-petclinic-cloud-customers-service spring-petclinic-cloud-admin-server spring-petclinic-cloud-discovery-service spring-petclinic-cloud-config-server; do
-            jf docker push $PREFIX/${service}:${{ steps.extract.outputs.version }} \
-              --project "${{ inputs.jfrog_project }}"
+            jf docker push \
+              $REPO/$SVC:${{ steps.extract.outputs.version }} \
+              --project="${{ inputs.jfrog_project }}"
           done
 
-          MAIN="spring-petclinic-cloud-api-gateway"
+      - name: Compute Digests (API Gateway)
+        id: meta_api_gateway
+        run: |
+          IMAGE="artifactory.rodolphef.org/dev-docker/spring-petclinic-cloud-api-gateway"
+          VERSION="${{ steps.extract.outputs.version }}"
 
-          DIGEST=$(jf rt curl -X GET "/api/docker/${{ vars.DOCKER_DEV_REPO }}/v2/$MAIN/manifests/${{ steps.extract.outputs.version }}" \
+          DIGEST=$(jf rt curl -X GET "/api/docker/dev-docker/v2/spring-petclinic-cloud-api-gateway/manifests/$VERSION" \
             -H "Accept: application/vnd.docker.distribution.manifest.v2+json" | jq -r '.config.digest')
 
-          echo "image=$PREFIX/$MAIN" >> $GITHUB_OUTPUT
+          echo "image=$IMAGE:$VERSION" >> $GITHUB_OUTPUT
           echo "digest=$DIGEST" >> $GITHUB_OUTPUT
-
-      - name: Publish build-info
-        run: |
-          jf rt bce --project "$JFROG_PROJECT"
-          jf rt bag --project "$JFROG_PROJECT"
-          jf rt bp  --project "$JFROG_PROJECT"

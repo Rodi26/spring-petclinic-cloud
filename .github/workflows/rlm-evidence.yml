@@ -1,40 +1,38 @@
-name: Generate RLM Evidence
+name: Evidence RLM
 
 on:
   workflow_call:
     inputs:
+      version:
+        required: true
+        type: string
       jfrog_project:
         required: true
-      build_name:
-        required: true
-      build_number:
-        required: true
+        type: string
     secrets:
       JF_URL:
         required: true
       JF_ACCESS_TOKEN:
         required: true
 
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
   evidence:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: jfrog/setup-jfrog-cli@v4
+      - name: Setup JFrog CLI
+        uses: jfrog/setup-jfrog-cli@v4
         env:
           JF_URL: ${{ secrets.JF_URL }}
           JF_ACCESS_TOKEN: ${{ secrets.JF_ACCESS_TOKEN }}
 
-      - name: Collect RLM Evidence
+      - name: Generate Evidence
         run: |
-          jf build-evidence-collect \
-            "${{ inputs.build_name }}" \
-            "${{ inputs.build_number }}" \
-            --format=json \
-            --project="${{ inputs.jfrog_project }}" \
-            > evidence.json
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: rlm-evidence-${{ inputs.build_number }}
-          path: evidence.json
+          jf evid collect \
+            --build="Java CI with Maven (Modular Orchestrator)" \
+            --build-number="${{ inputs.version }}" \
+            --project="${{ inputs.jfrog_project }}"

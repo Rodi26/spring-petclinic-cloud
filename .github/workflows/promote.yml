@@ -1,43 +1,27 @@
-name: Promote Build
+name: SLSA Provenance
 
 on:
   workflow_call:
     inputs:
-      build_name:
+      image:
         required: true
         type: string
-      build_number:
+      digest:
         required: true
         type: string
-      jfrog_project:
-        required: true
-        type: string
-      target_repo:
-        required: true
-        type: string
-    secrets:
-      JF_URL:
-        required: true
-      JF_ACCESS_TOKEN:
-        required: true
+
+permissions:
+  id-token: write
+  contents: read
+  attestations: write
 
 jobs:
-  promote:
+  provenance:
     runs-on: ubuntu-latest
 
     steps:
-
-      - uses: jfrog/setup-jfrog-cli@v4
-        env:
-          JF_URL: ${{ secrets.JF_URL }}
-          JF_ACCESS_TOKEN: ${{ secrets.JF_ACCESS_TOKEN }}
-
-      - name: Promote Build Artifacts
-        run: |
-          jf rt build-promote \
-            "${{ inputs.build_name }}" \
-            "${{ inputs.build_number }}" \
-            "${{ inputs.target_repo }}" \
-            --copy=true \
-            --comment="Automated Promotion" \
-            --project="${{ inputs.jfrog_project }}"
+      - name: Generate provenance
+        uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v2.1.0
+        with:
+          image: ${{ inputs.image }}
+          digest: ${{ inputs.digest }}
