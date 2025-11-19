@@ -20,7 +20,7 @@ jobs:
     needs: build
     uses: ./.github/workflows/release-bundle.yml
     with:
-      container_version: ${{ needs.build.outputs.version }}   # 🔥 Correct output
+      container_version: ${{ needs.build.outputs.version }}
       jfrog_project: ${{ vars.JFROG_PROJECT }}
     secrets: inherit
 
@@ -28,6 +28,6 @@ jobs:
     needs: [ build, release_bundle ]
     uses: ./.github/workflows/rlm-evidence.yml
     with:
-      container_version: ${{ needs.build.outputs.version }}   # 🔥 Correct output
+      container_version: ${{ needs.build.outputs.version }}
       jfrog_project: ${{ vars.JFROG_PROJECT }}
     secrets: inherit
