@@ -1,4 +1,4 @@
-name: Maven Build  Pipeline
+name: Maven Build Pipeline
 
 on:
   workflow_call:
@@ -24,8 +24,9 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
+    # FIXED OUTPUTS
     outputs:
-      version: ${{ env.CONTAINER_VERSION }}
+      version: ${{ steps.version.outputs.container_version }}
       image:   ${{ steps.metadata.outputs.image }}
       digest:  ${{ steps.metadata.outputs.digest }}
 
@@ -35,15 +36,9 @@ jobs:
 
     steps:
 
-      #######################################################
-      # CHECKOUT
-      #######################################################
       - name: Checkout
         uses: actions/checkout@v4
 
-      #######################################################
-      # JAVA
-      #######################################################
       - name: Set up JDK 11
         uses: actions/setup-java@v4
         with:
@@ -51,9 +46,6 @@ jobs:
           distribution: "temurin"
           cache: maven
 
-      #######################################################
-      # JFROG CLI
-      #######################################################
       - name: Setup JFrog CLI
         uses: jfrog/setup-jfrog-cli@v4
         env:
@@ -70,8 +62,8 @@ jobs:
           BASE_VERSION="${RAW_VERSION%-SNAPSHOT}"
           CONTAINER_VERSION="${BASE_VERSION}.${GITHUB_RUN_NUMBER}"
 
-          echo "container_version=${CONTAINER_VERSION}" >> $GITHUB_OUTPUT
-          echo "CONTAINER_VERSION=${CONTAINER_VERSION}" >> $GITHUB_ENV
+          echo "container_version=${CONTAINER_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "CONTAINER_VERSION=${CONTAINER_VERSION}" >> "$GITHUB_ENV"
 
       #######################################################
       # CONFIGURE MAVEN
@@ -107,7 +99,7 @@ jobs:
           done
 
       #######################################################
-      # PUSH IMAGES
+      # PUSH
       #######################################################
       - name: Push images
         run: |
@@ -122,12 +114,11 @@ jobs:
           )
 
           for S in "${SERVICES[@]}"; do
-            jf docker push ${REPO_PREFIX}/${S}:${CONTAINER_VERSION} \
-              --project="${JFROG_PROJECT}"
+            jf docker push ${REPO_PREFIX}/${S}:${CONTAINER_VERSION} --project="${JFROG_PROJECT}"
           done
 
       #######################################################
-      # EXTRACT DIGEST FOR API GATEWAY (MAIN IMAGE)
+      # DIGEST
       #######################################################
       - name: Extract image metadata
         id: metadata
@@ -139,11 +130,11 @@ jobs:
             -H "Accept: application/vnd.docker.distribution.manifest.v2+json" \
             | jq -r '.config.digest')
 
-          echo "image=${IMAGE}"   >> $GITHUB_OUTPUT
-          echo "digest=${DIGEST}" >> $GITHUB_OUTPUT
+          echo "image=${IMAGE}"   >> "$GITHUB_OUTPUT"
+          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
 
       #######################################################
-      # PUBLISH BUILD INFO
+      # BUILD INFO
       #######################################################
       - name: Publish Build Info
         run: |

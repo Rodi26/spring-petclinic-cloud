@@ -1,4 +1,4 @@
-name: Release  Bundle
+name: Release Bundle
 
 on:
   workflow_call:
@@ -28,7 +28,8 @@ jobs:
       JFROG_PROJECT: ${{ inputs.jfrog_project }}
 
     steps:
-      - name: Check Version Propagation
+
+      - name: Validate version
         run: |
           echo "CONTAINER_VERSION=${CONTAINER_VERSION}"
           if [[ -z "${CONTAINER_VERSION}" ]]; then
@@ -43,9 +44,7 @@ jobs:
           cat > release-bundle-spec.json << EOF
           {
             "files": [
-              {
-                "pattern": "${REPOSITORY_PREFIX}/spring-petclinic-***-*/${CONTAINER_VERSION}/*"
-              }
+              { "pattern": "${REPOSITORY_PREFIX}/spring-petclinic-***-*/${CONTAINER_VERSION}/*" }
             ]
           }
           EOF
