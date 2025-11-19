@@ -41,3 +41,7 @@ evidence.pub
 .github/workflows/rlm-evidence copy.yml
 .gitignore
 .github/workflows/maven-build copy.yml
+.github/workflows/test-orchestrator.sh
+.github/workflows/test-release-bundle.sh
+.github/workflows/release-bundle-spec.json
+.github/workflows/test-version.sh

@@ -1,33 +1,61 @@
-name: Orchestrator Pipeline
+name: Release Bundle
 
 on:
-  push:
-    branches: [ master ]
-  pull_request:
-    branches: [ master ]
-  schedule:
-    - cron: "0 0 * * *"
+  workflow_call:
+    inputs:
+      container_version:
+        required: true
+        type: string
+      jfrog_project:
+        required: true
+        type: string
+    secrets:
+      RB_KEY:
+        required: true
+
+permissions:
+  contents: read
+  id-token: write
 
 jobs:
-
-  build:
-    uses: ./.github/workflows/maven-build.yml
-    with:
-      jfrog_project: ${{ vars.JFROG_PROJECT }}
-    secrets: inherit
-
   release_bundle:
-    needs: build
-    uses: ./.github/workflows/release-bundle.yml
-    with:
-      container_version: ${{ needs.build.outputs.version }}
-      jfrog_project: ${{ vars.JFROG_PROJECT }}
-    secrets: inherit
+    runs-on: ubuntu-latest
 
-  rlm_evidence:
-    needs: [ build, release_bundle ]
-    uses: ./.github/workflows/rlm-evidence.yml
-    with:
-      container_version: ${{ needs.build.outputs.version }}
-      jfrog_project: ${{ vars.JFROG_PROJECT }}
-    secrets: inherit
+    env:
+      REPOSITORY_PREFIX: dev-oci-local
+      BUNDLE_NAME: spring-petclinic-***
+      CONTAINER_VERSION: ${{ inputs.container_version }}
+      JFROG_PROJECT: ${{ inputs.jfrog_project }}
+
+    steps:
+
+      - name: Check Version Propagation
+        run: |
+          echo "CONTAINER_VERSION=${CONTAINER_VERSION}"
+          if [[ -z "${CONTAINER_VERSION}" ]]; then
+            echo "❌ ERROR: CONTAINER_VERSION is empty!"
+            exit 1
+          fi
+
+      - uses: jfrog/setup-jfrog-cli@v4
+
+      - name: Generate Release Bundle Spec
+        run: |
+          cat > release-bundle-spec.json << EOF
+          {
+            "files": [
+              {
+                "pattern": "${REPOSITORY_PREFIX}/spring-petclinic-***-*/${CONTAINER_VERSION}/*"
+              }
+            ]
+          }
+          EOF
+
+      - name: Create Release Bundle
+        run: |
+          echo "🔐 Using RB_KEY to sign Release Bundle"
+          jf rt rbc "${BUNDLE_NAME}" "${CONTAINER_VERSION}" \
+            --spec=release-bundle-spec.json \
+            --signing-key="${{ secrets.RB_KEY }}" \
+            --sync=true \
+            --project="${JFROG_PROJECT}"

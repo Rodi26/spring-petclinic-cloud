@@ -24,7 +24,6 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
-    # FIXED OUTPUTS
     outputs:
       version: ${{ steps.version.outputs.container_version }}
       image:   ${{ steps.metadata.outputs.image }}
@@ -52,9 +51,6 @@ jobs:
           JF_URL: ${{ secrets.JF_URL }}
           JF_ACCESS_TOKEN: ${{ secrets.JF_ACCESS_TOKEN }}
 
-      #######################################################
-      # EXTRACT VERSION
-      #######################################################
       - name: Extract version
         id: version
         run: |
@@ -62,12 +58,9 @@ jobs:
           BASE_VERSION="${RAW_VERSION%-SNAPSHOT}"
           CONTAINER_VERSION="${BASE_VERSION}.${GITHUB_RUN_NUMBER}"
 
-          echo "container_version=${CONTAINER_VERSION}" >> "$GITHUB_OUTPUT"
-          echo "CONTAINER_VERSION=${CONTAINER_VERSION}" >> "$GITHUB_ENV"
+          echo "container_version=${CONTAINER_VERSION}" >> $GITHUB_OUTPUT
+          echo "CONTAINER_VERSION=${CONTAINER_VERSION}" >> $GITHUB_ENV
 
-      #######################################################
-      # CONFIGURE MAVEN
-      #######################################################
       - name: Configure Maven repos
         run: |
           jf mvnc \
@@ -76,9 +69,6 @@ jobs:
             --repo-resolve-releases=${{ vars.MVN_DEV_REPO_RESOLVE_RELEASES }} \
             --repo-resolve-snapshots=${{ vars.MVN_DEV_REPO_RESOLVE_SNAPSHOTS }}
 
-      #######################################################
-      # BUILD IMAGES
-      #######################################################
       - name: Build images
         run: |
           SERVICES=(
@@ -98,9 +88,6 @@ jobs:
               --project="${JFROG_PROJECT}"
           done
 
-      #######################################################
-      # PUSH
-      #######################################################
       - name: Push images
         run: |
           SERVICES=(
@@ -114,12 +101,10 @@ jobs:
           )
 
           for S in "${SERVICES[@]}"; do
-            jf docker push ${REPO_PREFIX}/${S}:${CONTAINER_VERSION} --project="${JFROG_PROJECT}"
+            jf docker push ${REPO_PREFIX}/${S}:${CONTAINER_VERSION} \
+              --project="${JFROG_PROJECT}"
           done
 
-      #######################################################
-      # DIGEST
-      #######################################################
       - name: Extract image metadata
         id: metadata
         run: |
@@ -130,12 +115,9 @@ jobs:
             -H "Accept: application/vnd.docker.distribution.manifest.v2+json" \
             | jq -r '.config.digest')
 
-          echo "image=${IMAGE}"   >> "$GITHUB_OUTPUT"
-          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
+          echo "image=${IMAGE}"   >> $GITHUB_OUTPUT
+          echo "digest=${DIGEST}" >> $GITHUB_OUTPUT
 
-      #######################################################
-      # BUILD INFO
-      #######################################################
       - name: Publish Build Info
         run: |
           jf rt bce --project="${JFROG_PROJECT}"
