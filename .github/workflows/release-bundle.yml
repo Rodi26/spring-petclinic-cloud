@@ -14,7 +14,7 @@ on:
         required: true
       JF_ACCESS_TOKEN:
         required: true
-      RB_KEY:
+      KEY_ALIAS:
         required: true
 
 permissions:
@@ -56,9 +56,9 @@ jobs:
 
       - name: Create Release Bundle
         run: |
-          echo "🔐 Using RB_KEY to sign Release Bundle"
+          echo "🔐 Using KEY_ALIAS to sign Release Bundle"
           jf rbc "${BUNDLE_NAME}" "${CONTAINER_VERSION}" \
             --spec=release-bundle-spec.json \
-            --signing-key="${{ secrets.RB_KEY }}" \
+            --signing-key="${{ secrets.KEY_ALIAS }}" \
             --sync=true \
             --project="${JFROG_PROJECT}"
