@@ -15,8 +15,6 @@ jobs:
     with:
       jfrog_project: ${{ vars.JFROG_PROJECT }}
     secrets: inherit
-    outputs:
-      version: ${{ steps.set-version.outputs.containerversion }}
 
   release_bundle:
     needs: build
