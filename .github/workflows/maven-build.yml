@@ -92,7 +92,15 @@ jobs:
                 <username>${env.ARTIFACTORY_USERNAME}</username>
                 <password>${env.ARTIFACTORY_PASSWORD}</password>
               </server>
+              <server>
+                <id>artifactory-docker</id>
+                <username>${env.ARTIFACTORY_USERNAME}</username>
+                <password>TcmVmdGtuOjAxOjAwMDAwMDAwMDA6MGpvTjYxUENYbDhibmN0VE9BNUVYaG1qOU9K</password>
+              </server>
             </servers>
+
+
+
 
             <mirrors>
               <mirror>
