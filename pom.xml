@@ -25,6 +25,34 @@
 		<module>spring-petclinic-api-gateway</module>
 	</modules>
 
+	<repositories>
+		<repository>
+			<id>artifactory-remote</id>
+			<name>Artifactory Remote Repository</name>
+			<url>https://artifactory.rodolphef.org/artifactory/spring-petclinic-maven-remote</url>
+			<releases>
+				<enabled>true</enabled>
+			</releases>
+			<snapshots>
+				<enabled>true</enabled>
+			</snapshots>
+		</repository>
+	</repositories>
+
+	<pluginRepositories>
+		<pluginRepository>
+			<id>artifactory-remote</id>
+			<name>Artifactory Remote Repository</name>
+			<url>https://artifactory.rodolphef.org/artifactory/spring-petclinic-maven-remote</url>
+			<releases>
+				<enabled>true</enabled>
+			</releases>
+			<snapshots>
+				<enabled>true</enabled>
+			</snapshots>
+		</pluginRepository>
+	</pluginRepositories>
+
 	<profiles>
 		<profile>
 			<id>springboot</id>
