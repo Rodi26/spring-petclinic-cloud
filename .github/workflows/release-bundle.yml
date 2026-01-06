@@ -10,6 +10,10 @@ on:
         required: true
         type: string
     secrets:
+      JF_URL:
+        required: true
+      JF_ACCESS_TOKEN:
+        required: true
       RB_KEY:
         required: true
 
@@ -37,7 +41,11 @@ jobs:
             exit 1
           fi
 
-      - uses: jfrog/setup-jfrog-cli@v4
+      - name: Setup JFrog CLI
+        uses: jfrog/setup-jfrog-cli@v4
+        env:
+          JF_URL: ${{ secrets.JF_URL }}
+          JF_ACCESS_TOKEN: ${{ secrets.JF_ACCESS_TOKEN }}
 
       - name: Generate Release Bundle Spec
         run: |
