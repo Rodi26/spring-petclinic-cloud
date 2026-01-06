@@ -117,7 +117,7 @@ jobs:
               --project="${JFROG_PROJECT}"
           done
 
-      - name: Extract image metadata
+      - name: Extract image metadata all
         id: metadata
         run: |
           IMAGE="${REPO_PREFIX}/spring-petclinic-cloud-api-gateway:${CONTAINER_VERSION}"
