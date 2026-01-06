@@ -1,5 +1,7 @@
-<?xml version='1.0' encoding='UTF-8'?>
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
 	<modelVersion>4.0.0</modelVersion>
 
 	<parent>
@@ -23,11 +25,6 @@
 		<docker.image.exposed.port>8080</docker.image.exposed.port>
 		<!-- Common dockerize version used by Dockerfiles in this project -->
 		<docker.image.dockerize.version>0.6.1</docker.image.dockerize.version>
-		<!-- Spring Boot build-image (Paketo Buildpacks) defaults -->
-		<oci.image.prefix>artifactory.rodolphef.org/dev-oci</oci.image.prefix>
-		<buildpacks.builder.image>artifactory.rodolphef.org/dev-docker/paketobuildpacks/builder:base</buildpacks.builder.image>
-		<buildpacks.run.image>artifactory.rodolphef.org/dev-docker/paketobuildpacks/run:base-cnb</buildpacks.run.image>
-		<spring-boot.build-image.publish>false</spring-boot.build-image.publish>
 	</properties>
 
 	<modules>
@@ -99,14 +96,6 @@
 								</configuration>
 							</execution>
 						</executions>
-					<configuration>
-							<image>
-								<name>${oci.image.prefix}/${project.artifactId}:${project.version}</name>
-								<builder>${buildpacks.builder.image}</builder>
-								<runImage>${buildpacks.run.image}</runImage>
-								<publish>${spring-boot.build-image.publish}</publish>
-							</image>
-						</configuration>
 					</plugin>
 
 					<!-- Spring Boot Actuator displays build-related information if a META-INF/build-info.properties
