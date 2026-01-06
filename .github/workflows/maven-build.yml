@@ -25,7 +25,7 @@ jobs:
     runs-on: ubuntu-latest
 
     outputs:
-      version: ${{ steps.version.outputs.container_version }}
+      version: ${{ steps.set-version.outputs.containerversion }}
       image:   ${{ steps.metadata.outputs.image }}
       digest:  ${{ steps.metadata.outputs.digest }}
 
@@ -60,6 +60,9 @@ jobs:
 
           echo "container_version=${CONTAINER_VERSION}" >> $GITHUB_OUTPUT
           echo "CONTAINER_VERSION=${CONTAINER_VERSION}" >> $GITHUB_ENV
+      - name: Set version output
+        id: set-version
+        run: echo "containerversion=${{ env.CONTAINER_VERSION }}" >> $GITHUB_OUTPUT
 
       - name: Configure Maven repos
         run: |
