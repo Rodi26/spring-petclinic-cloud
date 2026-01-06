@@ -27,7 +27,7 @@ jobs:
 
     env:
       REPOSITORY_PREFIX: dev-oci-local
-      BUNDLE_NAME: spring-petclinic-***
+      BUNDLE_NAME: spring-petclinic-cloud
       CONTAINER_VERSION: ${{ inputs.container_version }}
       JFROG_PROJECT: ${{ inputs.jfrog_project }}
 
@@ -49,15 +49,10 @@ jobs:
 
       - name: Generate Release Bundle Spec
         run: |
-          cat > release-bundle-spec.json << EOF
-          {
-            "files": [
-              {
-                "pattern": "${REPOSITORY_PREFIX}/spring-petclinic-***-*/${CONTAINER_VERSION}/*"
-              }
-            ]
-          }
-          EOF
+          PATTERN="${REPOSITORY_PREFIX}/spring-petclinic-cloud-*/${CONTAINER_VERSION}/*"
+          echo "Pattern: ${PATTERN}"
+          printf '{\n  "files": [\n    {\n      "pattern": "%s"\n    }\n  ]\n}' "${PATTERN}" > release-bundle-spec.json
+          cat release-bundle-spec.json
 
       - name: Create Release Bundle
         run: |
