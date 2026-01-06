@@ -56,6 +56,11 @@ jobs:
 
       - name: Create Release Bundle
         run: |
+          # Delete existing release bundle version if it exists (ignore errors)
+          echo "Checking for existing release bundle version..."
+          jf rbd "${BUNDLE_NAME}" "${CONTAINER_VERSION}" \
+            --project="${JFROG_PROJECT}" 2>/dev/null || echo "No existing release bundle to delete"
+          
           echo "🔐 Using KEY_ALIAS to sign Release Bundle"
           jf rbc "${BUNDLE_NAME}" "${CONTAINER_VERSION}" \
             --spec=release-bundle-spec.json \

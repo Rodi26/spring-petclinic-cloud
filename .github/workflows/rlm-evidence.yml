@@ -64,6 +64,11 @@ jobs:
           echo "Using CONTAINER_VERSION=${CONTAINER_VERSION}"
           SIGNING_KEY="${{ secrets.RB_KEY }}"
 
+          # Delete existing release bundle version if it exists (ignore errors)
+          echo "Checking for existing release bundle version..."
+          jf rbd "${BUNDLE_NAME}" "${CONTAINER_VERSION}" \
+            --project="${JFROG_PROJECT}" 2>/dev/null || echo "No existing release bundle to delete"
+
           if [ -z "$SIGNING_KEY" ]; then
             echo "⚠️ No RB_KEY provided → Release Bundle will NOT be signed"
             jf rbc "${BUNDLE_NAME}" "${CONTAINER_VERSION}" \
