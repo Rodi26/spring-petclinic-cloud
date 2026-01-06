@@ -24,10 +24,11 @@ jobs:
       jfrog_project: ${{ vars.JFROG_PROJECT }}
     secrets: inherit
 
-  rlm_evidence:
+  promote:
     needs: [ build, release_bundle ]
-    uses: ./.github/workflows/rlm-evidence.yml
+    uses: ./.github/workflows/promote.yml
     with:
-      container_version: ${{ needs.build.outputs.version }}
+      version: ${{ needs.build.outputs.version }}
       jfrog_project: ${{ vars.JFROG_PROJECT }}
+      environment: DEV
     secrets: inherit

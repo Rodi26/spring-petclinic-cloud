@@ -1,4 +1,4 @@
-name: Promote Build
+name: Promote Release Bundle
 
 on:
   workflow_call:
@@ -9,6 +9,10 @@ on:
       jfrog_project:
         required: true
         type: string
+      environment:
+        required: false
+        type: string
+        default: DEV
 
     secrets:
       JF_URL:
@@ -24,6 +28,9 @@ permissions:
   security-events: write
   attestations: write
 
+env:
+  BUNDLE_NAME: spring-petclinic-cloud
+
 jobs:
   promote:
     runs-on: ubuntu-latest
@@ -35,8 +42,9 @@ jobs:
           JF_URL: ${{ secrets.JF_URL }}
           JF_ACCESS_TOKEN: ${{ secrets.JF_ACCESS_TOKEN }}
 
-      - name: Promote Build
+      - name: Promote Release Bundle to ${{ inputs.environment }}
         run: |
-          jf rt bce --project="${{ inputs.jfrog_project }}"
-          jf rt bag --project="${{ inputs.jfrog_project }}"
-          jf rt bp  --project="${{ inputs.jfrog_project }}"
+          echo "Promoting release bundle ${BUNDLE_NAME} version ${{ inputs.version }} to environment ${{ inputs.environment }}"
+          jf release-bundle-promote "${BUNDLE_NAME}" "${{ inputs.version }}" "${{ inputs.environment }}" \
+            --project="${{ inputs.jfrog_project }}" \
+            --sync=true
