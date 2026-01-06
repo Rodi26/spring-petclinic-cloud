@@ -81,7 +81,33 @@ jobs:
             --repo-resolve-releases=${{ vars.MVN_DEV_REPO_RESOLVE_RELEASES }} \
             --repo-resolve-snapshots=${{ vars.MVN_DEV_REPO_RESOLVE_SNAPSHOTS }}
 
+      - name: Force Maven to use Artifactory for ALL downloads (mirror)
+        shell: bash
+        run: |
+          cat > ~/.m2/settings.xml <<'EOF'
+          <settings>
+            <servers>
+              <server>
+                <id>artifactory-remote</id>
+                <username>${env.ARTIFACTORY_USERNAME}</username>
+                <password>${env.ARTIFACTORY_PASSWORD}</password>
+              </server>
+            </servers>
+
+            <mirrors>
+              <mirror>
+                <id>artifactory-remote</id>
+                <name>Artifactory mirror</name>
+                <url>https://artifactory.rodolphef.org/artifactory/spring-petclinic-maven-remote</url>
+                <mirrorOf>*</mirrorOf>
+              </mirror>
+            </mirrors>
+          </settings>
+          EOF
       - name: Build images
+        env:
+          ARTIFACTORY_USERNAME: ${{ secrets.ARTIFACTORY_USERNAME }}
+          ARTIFACTORY_PASSWORD: ${{ secrets.ARTIFACTORY_PASSWORD }}
         run: |
           SERVICES=(
             "spring-petclinic-cloud-api-gateway"
