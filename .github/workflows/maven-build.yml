@@ -6,7 +6,16 @@ on:
       jfrog_project:
         required: true
         type: string
-
+    outputs:
+      version:
+        description: "Container version"
+        value: ${{ jobs.build.outputs.version }}
+      image:
+        description: "Container image"
+        value: ${{ jobs.build.outputs.image }}
+      digest:
+        description: "Container digest"
+        value: ${{ jobs.build.outputs.digest }}
     secrets:
       JF_URL:
         required: true
