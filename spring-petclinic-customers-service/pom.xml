@@ -19,7 +19,7 @@
 
 	<properties>
 		<java.version>11</java.version>
-		<assertj.version>3.11.1</assertj.version>
+		<assertj.version>3.27.7</assertj.version>
 
 		<spring-boot.version>2.6.3</spring-boot.version>
 		<spring-cloud.version>2021.0.0</spring-cloud.version>
