@@ -133,11 +133,10 @@ jobs:
           for i in "${!SERVICES[@]}"; do
             S="${SERVICES[$i]}"
             M="${MODULES[$i]}"
-            jf mvn -B -DskipTests spring-boot:build-image -Pk8s \
+            mvn -B -DskipTests spring-boot:build-image -Pk8s \
               -pl ":${M}" -am \
               -DREPOSITORY_PREFIX=${REPO_PREFIX} \
-              -DVERSION=${CONTAINER_VERSION} \
-              --project="${JFROG_PROJECT}"
+              -DVERSION=${CONTAINER_VERSION}
           done
 
       - name: Push images
