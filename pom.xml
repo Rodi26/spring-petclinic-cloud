@@ -68,6 +68,45 @@
 		</pluginRepository>
 	</pluginRepositories>
 
+	<dependencyManagement>
+		<dependencies>
+			<!-- Override Spring Boot parent versions with ranges to allow minor (and patch) updates.
+			     Maven resolves the range at each build and uses the latest version from the repository.
+			     Example: uncomment and adjust groupId/artifactId/version range as needed.
+			<dependency>
+				<groupId>com.example</groupId>
+				<artifactId>some-library</artifactId>
+				<version>[2.0,3.0)</version>
+			</dependency>
+			-->
+		</dependencies>
+	</dependencyManagement>
+
+	<build>
+		<plugins>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-enforcer-plugin</artifactId>
+				<version>3.4.1</version>
+				<executions>
+					<execution>
+						<id>enforce-versions</id>
+						<phase>validate</phase>
+						<goals>
+							<goal>enforce</goal>
+						</goals>
+						<configuration>
+							<rules>
+								<requireUpperBoundDeps />
+								<banDuplicatePomDependencies />
+							</rules>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>
+		</plugins>
+	</build>
+
 	<profiles>
 		<profile>
 			<id>springboot</id>
