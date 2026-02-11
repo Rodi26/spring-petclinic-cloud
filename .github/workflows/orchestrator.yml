@@ -14,6 +14,8 @@ jobs:
     uses: ./.github/workflows/maven-build.yml
     with:
       jfrog_project: ${{ vars.JFROG_PROJECT }}
+      docker_repo_prefix: ${{ vars.DOCKER_REPO_PREFIX }}
+      docker_repo_key: ${{ vars.DOCKER_REPO_KEY }}
     secrets: inherit
 
   release_bundle:

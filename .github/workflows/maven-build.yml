@@ -6,6 +6,14 @@ on:
       jfrog_project:
         required: true
         type: string
+      docker_repo_prefix:
+        required: false
+        type: string
+        description: "Docker/OCI registry prefix (e.g. artifactory.rodolphef.org/dev-oci)"
+      docker_repo_key:
+        required: false
+        type: string
+        description: "Artifactory Docker repo key for API calls (e.g. dev-oci-local)"
     outputs:
       version:
         description: "Container version"
@@ -39,7 +47,8 @@ jobs:
       digest:  ${{ steps.metadata.outputs.digest }}
 
     env:
-      REPO_PREFIX: artifactory.rodolphef.org/dev-oci
+      REPO_PREFIX: ${{ inputs.docker_repo_prefix || vars.DOCKER_REPO_PREFIX || 'artifactory.rodolphef.org/dev-oci' }}
+      DOCKER_REPO_KEY: ${{ inputs.docker_repo_key || vars.DOCKER_REPO_KEY || 'dev-oci-local' }}
       JFROG_PROJECT: ${{ inputs.jfrog_project }}
 
     steps:
@@ -76,10 +85,10 @@ jobs:
       - name: Configure Maven repos
         run: |
           jf mvnc \
-            --repo-deploy-releases=${{ vars.MVN_DEV_REPO_DEPLOY_RELEASES }} \
-            --repo-deploy-snapshots=${{ vars.MVN_DEV_REPO_DEPLOY_SNAPSHOTS }} \
-            --repo-resolve-releases=${{ vars.MVN_DEV_REPO_RESOLVE_RELEASES }} \
-            --repo-resolve-snapshots=${{ vars.MVN_DEV_REPO_RESOLVE_SNAPSHOTS }}
+            --repo-deploy-releases=${{ vars.MVN_DEV_REPO_DEPLOY_RELEASES || 'dev-maven' }} \
+            --repo-deploy-snapshots=${{ vars.MVN_DEV_REPO_DEPLOY_SNAPSHOTS || 'dev-maven' }} \
+            --repo-resolve-releases=${{ vars.MVN_DEV_REPO_RESOLVE_RELEASES || 'dev-maven' }} \
+            --repo-resolve-snapshots=${{ vars.MVN_DEV_REPO_RESOLVE_SNAPSHOTS || 'dev-maven' }}
 
       - name: Force Maven to use Artifactory for ALL downloads (mirror)
         shell: bash
@@ -95,7 +104,7 @@ jobs:
               <server>
                 <id>artifactory-docker</id>
                 <username>${env.ARTIFACTORY_USERNAME}</username>
-                <password>TcmVmdGtuOjAxOjAwMDAwMDAwMDA6MGpvTjYxUENYbDhibmN0VE9BNUVYaG1qOU9K</password>
+                <password>${env.ARTIFACTORY_PASSWORD}</password>
               </server>
             </servers>
 
@@ -117,18 +126,15 @@ jobs:
           ARTIFACTORY_USERNAME: ${{ secrets.ARTIFACTORY_USERNAME }}
           ARTIFACTORY_PASSWORD: ${{ secrets.ARTIFACTORY_PASSWORD }}
         run: |
-          SERVICES=(
-            "spring-petclinic-cloud-api-gateway"
-            "spring-petclinic-cloud-visits-service"
-            "spring-petclinic-cloud-vets-service"
-            "spring-petclinic-cloud-customers-service"
-            "spring-petclinic-cloud-admin-server"
-            "spring-petclinic-cloud-discovery-service"
-            "spring-petclinic-cloud-config-server"
-          )
+          # Image names (for push) and Maven module artifactIds (for -pl)
+          SERVICES=( "spring-petclinic-cloud-api-gateway" "spring-petclinic-cloud-visits-service" "spring-petclinic-cloud-vets-service" "spring-petclinic-cloud-customers-service" "spring-petclinic-cloud-admin-server" "spring-petclinic-cloud-discovery-service" "spring-petclinic-cloud-config-server" )
+          MODULES=( "spring-petclinic-api-gateway" "spring-petclinic-visits-service" "spring-petclinic-vets-service" "spring-petclinic-customers-service" "spring-petclinic-admin-server" "spring-petclinic-discovery-server" "spring-petclinic-config-server" )
 
-          for S in "${SERVICES[@]}"; do
+          for i in "${!SERVICES[@]}"; do
+            S="${SERVICES[$i]}"
+            M="${MODULES[$i]}"
             jf mvn -B -DskipTests spring-boot:build-image -Pk8s \
+              -pl ":${M}" -am \
               -DREPOSITORY_PREFIX=${REPO_PREFIX} \
               -DVERSION=${CONTAINER_VERSION} \
               --project="${JFROG_PROJECT}"
@@ -157,7 +163,7 @@ jobs:
           IMAGE="${REPO_PREFIX}/spring-petclinic-cloud-api-gateway:${CONTAINER_VERSION}"
 
           DIGEST=$(jf rt curl -X GET \
-            "/api/docker/dev-oci-local/v2/spring-petclinic-cloud-api-gateway/manifests/${CONTAINER_VERSION}" \
+            "/api/docker/${DOCKER_REPO_KEY}/v2/spring-petclinic-cloud-api-gateway/manifests/${CONTAINER_VERSION}" \
             -H "Accept: application/vnd.docker.distribution.manifest.v2+json" \
             | jq -r '.config.digest')
 
