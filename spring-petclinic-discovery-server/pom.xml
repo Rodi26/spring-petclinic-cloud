@@ -63,6 +63,22 @@
     </dependencies>
     <dependencyManagement>
         <dependencies>
+            <!-- Force patched Tomcat for JFrog Xray (CVE-2025-24813, CVE-2024-50379). Parent is spring-boot-starter-parent, not root. -->
+            <dependency>
+                <groupId>org.apache.tomcat.embed</groupId>
+                <artifactId>tomcat-embed-core</artifactId>
+                <version>9.0.99</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.tomcat.embed</groupId>
+                <artifactId>tomcat-embed-el</artifactId>
+                <version>9.0.99</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.tomcat.embed</groupId>
+                <artifactId>tomcat-embed-websocket</artifactId>
+                <version>9.0.99</version>
+            </dependency>
             <dependency>
                 <groupId>io.pivotal.spring.cloud</groupId>
                 <artifactId>spring-cloud-services-dependencies</artifactId>

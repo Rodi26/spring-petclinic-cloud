@@ -80,10 +80,21 @@
 			</dependency>
 			-->
 			<!-- Force patched versions for JFrog Xray policy (CVE 9+ / EPSS 75%). Overrides blocked versions. -->
+			<!-- Tomcat 9.0.99+ required for CVE-2025-24813, CVE-2024-50379 (9.0.75 blocked). -->
 			<dependency>
 				<groupId>org.apache.tomcat.embed</groupId>
 				<artifactId>tomcat-embed-core</artifactId>
-				<version>9.0.75</version>
+				<version>9.0.99</version>
+			</dependency>
+			<dependency>
+				<groupId>org.apache.tomcat.embed</groupId>
+				<artifactId>tomcat-embed-el</artifactId>
+				<version>9.0.99</version>
+			</dependency>
+			<dependency>
+				<groupId>org.apache.tomcat.embed</groupId>
+				<artifactId>tomcat-embed-websocket</artifactId>
+				<version>9.0.99</version>
 			</dependency>
 			<dependency>
 				<groupId>org.springframework</groupId>
