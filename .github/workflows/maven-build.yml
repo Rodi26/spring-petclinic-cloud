@@ -41,6 +41,15 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
+    # Spring Boot 2.6 build-image uses Docker API v1.24; host Docker 29+ requires 1.44+.
+    # Use Docker 28 dind so the plugin can pull builder images (see spring-projects/spring-boot#48050).
+    services:
+      dind:
+        image: docker:28-dind
+        options: --privileged
+        ports:
+          - 2375:2375
+
     outputs:
       version: ${{ steps.set-version.outputs.containerversion }}
       image:   ${{ steps.metadata.outputs.image }}
@@ -50,6 +59,7 @@ jobs:
       REPO_PREFIX: ${{ inputs.docker_repo_prefix || vars.DOCKER_REPO_PREFIX || 'artifactory.rodolphef.org/dev-oci' }}
       DOCKER_REPO_KEY: ${{ inputs.docker_repo_key || vars.DOCKER_REPO_KEY || 'dev-oci-local' }}
       JFROG_PROJECT: ${{ inputs.jfrog_project }}
+      DOCKER_HOST: tcp://localhost:2375
 
     steps:
 
@@ -121,6 +131,20 @@ jobs:
             </mirrors>
           </settings>
           EOF
+
+      - name: Wait for Docker (dind)
+        run: |
+          for i in $(seq 1 30); do
+            if docker info >/dev/null 2>&1; then
+              echo "Docker is ready"
+              exit 0
+            fi
+            echo "Waiting for Docker..."
+            sleep 2
+          done
+          echo "Docker did not become ready"
+          exit 1
+
       - name: Build images
         env:
           ARTIFACTORY_USERNAME: ${{ secrets.ARTIFACTORY_USERNAME }}
